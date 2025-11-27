@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"generateTestData/backend/config"
 	"generateTestData/backend/models"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -13,6 +15,38 @@ type ExportService struct{}
 
 func NewExportService() *ExportService {
 	return &ExportService{}
+}
+
+// ensureFileExtension 确保文件名有正确的后缀，如果没有则自动添加
+// 参数：
+//   - fileName: 用户输入的文件名
+//   - extension: 期望的文件后缀（不含点号，如 "sql", "json", "txt"）
+//
+// 返回：带有正确后缀的文件名
+func ensureFileExtension(fileName, extension string) string {
+	if fileName == "" {
+		return fileName
+	}
+
+	// 规范化扩展名（转为小写）
+	extension = strings.ToLower(extension)
+	fileNameLower := strings.ToLower(fileName)
+
+	// 如果文件名已经有该后缀（不区分大小写），直接返回原文件名（保持原大小写）
+	if strings.HasSuffix(fileNameLower, "."+extension) {
+		return fileName
+	}
+
+	// 查找最后一个点号的位置
+	idx := strings.LastIndex(fileName, ".")
+
+	// 如果找到点号且不在开头或末尾，说明有其他后缀，替换为正确的后缀
+	if idx > 0 && idx < len(fileName)-1 {
+		return fileName[:idx] + "." + extension
+	}
+
+	// 如果没有后缀或点号在开头/末尾，添加后缀
+	return fileName + "." + extension
 }
 
 // 插入数据到数据库
@@ -70,10 +104,16 @@ func (s *ExportService) InsertToDatabase(dataSource *models.DataSource, tableNam
 }
 
 // 导出为SQL文件（使用批量INSERT提高性能）
-func (s *ExportService) ExportToSQL(filePath, tableName string, records []map[string]interface{}, isFirst bool) error {
+func (s *ExportService) ExportToSQL(fileName, tableName string, records []map[string]interface{}, isFirst bool) error {
 	if len(records) == 0 {
 		return nil
 	}
+
+	// 确保文件名有正确的后缀
+	fileName = ensureFileExtension(fileName, "sql")
+
+	// 自动拼接文件路径
+	filePath := filepath.Join(config.AppConfig.GenerateDir, fileName)
 
 	// 打开文件
 	var file *os.File
@@ -145,10 +185,16 @@ func (s *ExportService) ExportToSQL(filePath, tableName string, records []map[st
 }
 
 // 导出为TXT文件（每行一个JSON字符串）
-func (s *ExportService) ExportToTXT(filePath string, jsonObjects []map[string]interface{}, isFirst bool) error {
+func (s *ExportService) ExportToTXT(fileName string, jsonObjects []map[string]interface{}, isFirst bool) error {
 	if len(jsonObjects) == 0 {
 		return nil
 	}
+
+	// 确保文件名有正确的后缀
+	fileName = ensureFileExtension(fileName, "txt")
+
+	// 自动拼接文件路径
+	filePath := filepath.Join(config.AppConfig.GenerateDir, fileName)
 
 	// 打开文件
 	var file *os.File
@@ -185,10 +231,16 @@ func (s *ExportService) ExportToTXT(filePath string, jsonObjects []map[string]in
 }
 
 // 导出为JSON文件
-func (s *ExportService) ExportToJSON(filePath string, jsonObjects []map[string]interface{}, isFirst bool) error {
+func (s *ExportService) ExportToJSON(fileName string, jsonObjects []map[string]interface{}, isFirst bool) error {
 	if len(jsonObjects) == 0 {
 		return nil
 	}
+
+	// 确保文件名有正确的后缀
+	fileName = ensureFileExtension(fileName, "json")
+
+	// 自动拼接文件路径
+	filePath := filepath.Join(config.AppConfig.GenerateDir, fileName)
 
 	// 打开文件
 	var file *os.File

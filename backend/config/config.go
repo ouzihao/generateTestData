@@ -6,23 +6,30 @@ import (
 )
 
 type Config struct {
-	Port     string
-	DBPath   string
-	UploadDir string
+	Port        string
+	DBPath      string
+	UploadDir   string
+	GenerateDir string
 }
 
 var AppConfig *Config
 
 func InitConfig() {
 	AppConfig = &Config{
-		Port:     getEnv("PORT", "8080"),
-		DBPath:   getEnv("DB_PATH", "./data.db"),
-		UploadDir: getEnv("UPLOAD_DIR", "./uploads"),
+		Port:        getEnv("PORT", "8080"),
+		DBPath:      getEnv("DB_PATH", "./data.db"),
+		UploadDir:   getEnv("UPLOAD_DIR", "./uploads"),
+		GenerateDir: getEnv("GENERATE_DIR", "./generate_files"),
 	}
 
 	// 创建上传目录
 	if err := os.MkdirAll(AppConfig.UploadDir, 0755); err != nil {
 		log.Printf("创建上传目录失败: %v", err)
+	}
+
+	// 创建生成文件目录
+	if err := os.MkdirAll(AppConfig.GenerateDir, 0755); err != nil {
+		log.Printf("创建生成文件目录失败: %v", err)
 	}
 
 	log.Printf("配置初始化完成: %+v", AppConfig)

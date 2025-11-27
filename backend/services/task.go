@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"generateTestData/backend/models"
 	"math"
-	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -172,12 +170,6 @@ func (s *TaskService) executeDatabaseTask(task *models.Task) error {
 		case models.OutputTypeDatabase:
 			err = s.exportService.InsertToDatabase(task.DataSource, task.TableName, records)
 		case models.OutputTypeSQL:
-			// 创建输出目录
-			if generated == 0 {
-				if err := os.MkdirAll(filepath.Dir(task.OutputPath), 0755); err != nil {
-					return fmt.Errorf("创建输出目录失败: %v", err)
-				}
-			}
 			err = s.exportService.ExportToSQL(task.OutputPath, task.TableName, records, generated == 0)
 		default:
 			return fmt.Errorf("不支持的输出类型: %s", task.OutputType)
@@ -221,11 +213,6 @@ func (s *TaskService) executeJSONTask(task *models.Task) error {
 	// 分批生成数据
 	batchSize := int64(1000) // JSON数据每批1000条
 	var generated int64
-
-	// 创建输出文件
-	if err := os.MkdirAll(filepath.Dir(task.OutputPath), 0755); err != nil {
-		return fmt.Errorf("创建输出目录失败: %v", err)
-	}
 
 	for generated < task.Count {
 		currentBatch := batchSize
@@ -417,7 +404,7 @@ func (s *TaskService) generateDatabasePreview(task *models.Task, fieldRules map[
 
 	// 为预览创建独立的生成器实例
 	generatorService := NewGeneratorService()
-	
+
 	// 生成一条数据
 	data, err := generatorService.GenerateRecord(tableInfo, fieldRules, []string{})
 	if err != nil {
@@ -437,7 +424,7 @@ func (s *TaskService) generateJSONPreview(task *models.Task, fieldRules map[stri
 
 	// 为预览创建独立的生成器实例
 	generatorService := NewGeneratorService()
-	
+
 	// 生成一条数据
 	data, err := generatorService.GenerateJSON(schema, fieldRules, []string{})
 	if err != nil {

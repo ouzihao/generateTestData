@@ -160,8 +160,8 @@
               <el-radio label="sql">导出SQL文件</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="输出路径" prop="outputPath" v-if="formData.outputType === 'sql'">
-            <el-input v-model="formData.outputPath" placeholder="请输入SQL文件路径" class="form-item-full" />
+          <el-form-item label="输出文件名" prop="outputPath" v-if="formData.outputType === 'sql'">
+            <el-input v-model="formData.outputPath" placeholder="请输入SQL文件名，如：data.sql" class="form-item-full" />
           </el-form-item>
         </template>
         
@@ -190,8 +190,8 @@
               <el-radio label="txt">TXT文件（每行一个JSON）</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="输出路径" prop="outputPath">
-            <el-input v-model="formData.outputPath" :placeholder="formData.outputType === 'json' ? '请输入JSON文件路径' : '请输入TXT文件路径'" class="form-item-full" />
+          <el-form-item label="输出文件名" prop="outputPath">
+            <el-input v-model="formData.outputPath" :placeholder="formData.outputType === 'json' ? '请输入JSON文件名，如：data.json' : '请输入TXT文件名，如：data.txt'" class="form-item-full" />
           </el-form-item>
         </template>
         
@@ -486,8 +486,8 @@
           </el-radio-group>
         </el-form-item>
         
-        <el-form-item label="输出路径" prop="outputPath" v-if="editingTask.outputType === 'sql' || editingTask.outputType === 'json' || editingTask.outputType === 'txt'">
-          <el-input v-model="editingTask.outputPath" :placeholder="editingTask.outputType === 'sql' ? '请输入SQL文件路径' : editingTask.outputType === 'json' ? '请输入JSON文件路径' : '请输入TXT文件路径'" />
+        <el-form-item label="输出文件名" prop="outputPath" v-if="editingTask.outputType === 'sql' || editingTask.outputType === 'json' || editingTask.outputType === 'txt'">
+          <el-input v-model="editingTask.outputPath" :placeholder="editingTask.outputType === 'sql' ? '请输入SQL文件名，如：data.sql' : editingTask.outputType === 'json' ? '请输入JSON文件名，如：data.json' : '请输入TXT文件名，如：data.txt'" />
         </el-form-item>
         
         <el-form-item label="生成数量" prop="count">
@@ -688,12 +688,18 @@
             {{ new Date(row.created_at).toLocaleString() }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200">
+        <el-table-column label="操作" width="380">
           <template #default="{ row }">
-            <el-button size="small" type="primary" @click="importTemplate(row)">
-              导入
+            <el-button size="small" type="primary" @click="applyTemplateToForm(row)">
+              <el-icon><DocumentCopy /></el-icon>
+              应用模板
+            </el-button>
+            <el-button size="small" type="success" @click="downloadTemplate(row)">
+              <el-icon><Download /></el-icon>
+              下载模板
             </el-button>
             <el-button size="small" type="danger" @click="deleteTemplate(row)">
+              <el-icon><Delete /></el-icon>
               删除
             </el-button>
           </template>
@@ -702,6 +708,10 @@
       
       <template #footer>
         <div class="button-group">
+          <el-button type="primary" @click="showImportTemplateFileDialog">
+            <el-icon><Upload /></el-icon>
+            导入模板
+          </el-button>
           <el-button @click="templateDialogVisible = false">关闭</el-button>
         </div>
       </template>
@@ -712,7 +722,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, CopyDocument, Document } from '@element-plus/icons-vue'
+import { Plus, CopyDocument, Document, Download, Delete, Upload, DocumentCopy } from '@element-plus/icons-vue'
 import { taskApi, templateApi } from '@/api/task'
 import { datasourceApi } from '@/api/datasource'
 
@@ -760,7 +770,7 @@ const formRules = {
   dataSourceId: [{ required: true, message: '请选择数据源', trigger: 'change' }],
   tableName: [{ required: true, message: '请选择表名', trigger: 'change' }],
   outputType: [{ required: true, message: '请选择输出类型', trigger: 'change' }],
-  outputPath: [{ required: true, message: '请输入输出路径', trigger: 'blur' }],
+  outputPath: [{ required: true, message: '请输入输出文件名', trigger: 'blur' }],
   jsonSchema: [{ required: true, message: '请输入JSON结构', trigger: 'blur' }],
   count: [{ required: true, message: '请输入生成数量', trigger: 'blur' }]
 }
@@ -1071,7 +1081,7 @@ const resetForm = () => {
     dataSourceId: null,
     tableName: '',
     outputType: 'database',
-    outputPath: 'generate_files/',
+    outputPath: '',
     jsonSchema: '',
     count: 1000
   })
@@ -1487,10 +1497,7 @@ const handleRegexSelect = (fieldName, item) => {
 const editTask = async (task) => {
   editingTask.value = { ...task }
   
-  // 如果输出路径为空，设置默认值
-  if (!editingTask.value.outputPath && (editingTask.value.outputType === 'sql' || editingTask.value.outputType === 'json' || editingTask.value.outputType === 'txt')) {
-    editingTask.value.outputPath = 'generate_files/'
-  }
+  // 输出文件名由用户输入，不需要设置默认值
   
   // 清空当前规则
   Object.keys(fieldRules).forEach(key => {
@@ -1634,9 +1641,14 @@ const loadTemplates = async () => {
   }
 }
 
-// 导入模板
-const importTemplate = async (template) => {
+// 应用模板到创建任务表单（在创建任务对话框中使用）
+const applyTemplateToForm = async (template) => {
   try {
+    // 如果创建任务对话框未打开，先打开它
+    if (!dialogVisible.value) {
+      showCreateDialog()
+    }
+    
     // 解析模板的字段规则
     const rules = JSON.parse(template.fieldRules || '{}')
     
@@ -1676,12 +1688,89 @@ const importTemplate = async (template) => {
       formData.jsonSchema = template.jsonSchema
     }
     
-    ElMessage.success('模板导入成功')
+    ElMessage.success(`模板"${template.name}"已应用到创建任务表单`)
     templateDialogVisible.value = false
   } catch (error) {
-    console.error('导入模板失败:', error)
-    ElMessage.error('导入模板失败')
+    console.error('应用模板失败:', error)
+    ElMessage.error('应用模板失败')
   }
+}
+
+// 下载模板为JSON文件
+const downloadTemplate = (template) => {
+  try {
+    const templateData = {
+      name: template.name,
+      description: template.description,
+      type: template.type,
+      jsonSchema: template.jsonSchema,
+      fieldRules: template.fieldRules
+    }
+    
+    const dataStr = JSON.stringify(templateData, null, 2)
+    const dataBlob = new Blob([dataStr], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(dataBlob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${template.name || 'template'}_${Date.now()}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    ElMessage.success('模板下载成功')
+  } catch (error) {
+    console.error('下载模板失败:', error)
+    ElMessage.error('下载模板失败')
+  }
+}
+
+// 显示导入模板文件对话框
+const showImportTemplateFileDialog = () => {
+  // 创建隐藏的文件输入元素
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.style.display = 'none'
+  
+  input.onchange = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    
+    try {
+      const text = await file.text()
+      const templateData = JSON.parse(text)
+      
+      // 验证模板格式
+      if (!templateData.name || !templateData.type) {
+        ElMessage.error('模板格式错误：缺少必要字段（name、type）')
+        return
+      }
+      
+      // 调用API导入模板到数据库
+      await templateApi.import(templateData)
+      ElMessage.success('模板导入成功')
+      loadTemplates()
+    } catch (error) {
+      console.error('导入模板失败:', error)
+      if (error.response && error.response.data && error.response.data.error) {
+        ElMessage.error('导入模板失败：' + error.response.data.error)
+      } else {
+        ElMessage.error('导入模板失败：' + (error.message || '文件格式错误'))
+      }
+    }
+  }
+  
+  input.oncancel = () => {
+    // 用户取消选择文件
+  }
+  
+  document.body.appendChild(input)
+  input.click()
+  // 延迟删除，确保文件选择对话框已关闭
+  setTimeout(() => {
+    document.body.removeChild(input)
+  }, 100)
 }
 
 // 删除模板

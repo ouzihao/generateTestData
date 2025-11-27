@@ -71,7 +71,7 @@ type Task struct {
 	FieldRules   string      `json:"fieldRules"` // 存储字段规则的JSON字符串
 	Count        int64       `json:"count"`      // 生成数据数量
 	OutputType   OutputType  `json:"outputType"`
-	OutputPath   string      `json:"outputPath"`    // 输出文件路径
+	OutputPath   string      `json:"outputPath"`    // 输出文件名（不含路径，会自动保存到配置的生成目录）
 	UniqueFields string      `json:"unique_fields"` // 不允许重复的字段，JSON数组格式
 	Status       TaskStatus  `json:"status" gorm:"default:pending"`
 	Progress     float64     `json:"progress" gorm:"default:0"`
