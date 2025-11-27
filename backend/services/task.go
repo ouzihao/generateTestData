@@ -11,16 +11,14 @@ import (
 )
 
 type TaskService struct {
-	dbService        *DatabaseService
-	generatorService *GeneratorService
-	exportService    *ExportService
+	dbService     *DatabaseService
+	exportService *ExportService
 }
 
 func NewTaskService() *TaskService {
 	return &TaskService{
-		dbService:        NewDatabaseService(),
-		generatorService: NewGeneratorService(),
-		exportService:    NewExportService(),
+		dbService:     NewDatabaseService(),
+		exportService: NewExportService(),
 	}
 }
 
@@ -146,10 +144,8 @@ func (s *TaskService) executeDatabaseTask(task *models.Task) error {
 		return fmt.Errorf("解析唯一字段失败: %v", err)
 	}
 
-	// 重置生成器（只重置唯一值检查，保持序列连续性）
-	s.generatorService.Reset()
-	// 对于新任务，重置序列计数器
-	s.generatorService.ResetSequenceCounters()
+	// 为每个任务创建独立的生成器实例，避免并发冲突
+	generatorService := NewGeneratorService()
 
 	// 分批生成数据
 	batchSize := int64(10000) // 每批1万条
@@ -164,7 +160,7 @@ func (s *TaskService) executeDatabaseTask(task *models.Task) error {
 		// 生成一批数据
 		records := make([]map[string]interface{}, currentBatch)
 		for i := int64(0); i < currentBatch; i++ {
-			record, err := s.generatorService.GenerateRecord(tableInfo, rules, uniqueFields)
+			record, err := generatorService.GenerateRecord(tableInfo, rules, uniqueFields)
 			if err != nil {
 				return fmt.Errorf("生成记录失败: %v", err)
 			}
@@ -219,10 +215,8 @@ func (s *TaskService) executeJSONTask(task *models.Task) error {
 		return fmt.Errorf("解析唯一字段失败: %v", err)
 	}
 
-	// 重置生成器（只重置唯一值检查，保持序列连续性）
-	s.generatorService.Reset()
-	// 对于新任务，重置序列计数器
-	s.generatorService.ResetSequenceCounters()
+	// 为每个任务创建独立的生成器实例，避免并发冲突
+	generatorService := NewGeneratorService()
 
 	// 分批生成数据
 	batchSize := int64(1000) // JSON数据每批1000条
@@ -242,7 +236,7 @@ func (s *TaskService) executeJSONTask(task *models.Task) error {
 		// 生成一批数据
 		jsonObjects := make([]map[string]interface{}, currentBatch)
 		for i := int64(0); i < currentBatch; i++ {
-			jsonObj, err := s.generatorService.GenerateJSON(schema, rules, uniqueFields)
+			jsonObj, err := generatorService.GenerateJSON(schema, rules, uniqueFields)
 			if err != nil {
 				return fmt.Errorf("生成JSON对象失败: %v", err)
 			}
@@ -421,8 +415,11 @@ func (s *TaskService) generateDatabasePreview(task *models.Task, fieldRules map[
 		return nil, fmt.Errorf("获取表结构失败: %v", err)
 	}
 
+	// 为预览创建独立的生成器实例
+	generatorService := NewGeneratorService()
+	
 	// 生成一条数据
-	data, err := s.generatorService.GenerateRecord(tableInfo, fieldRules, []string{})
+	data, err := generatorService.GenerateRecord(tableInfo, fieldRules, []string{})
 	if err != nil {
 		return nil, fmt.Errorf("生成数据失败: %v", err)
 	}
@@ -438,8 +435,11 @@ func (s *TaskService) generateJSONPreview(task *models.Task, fieldRules map[stri
 		return nil, fmt.Errorf("解析JSON结构失败: %v", err)
 	}
 
+	// 为预览创建独立的生成器实例
+	generatorService := NewGeneratorService()
+	
 	// 生成一条数据
-	data, err := s.generatorService.GenerateJSON(schema, fieldRules, []string{})
+	data, err := generatorService.GenerateJSON(schema, fieldRules, []string{})
 	if err != nil {
 		return nil, fmt.Errorf("生成数据失败: %v", err)
 	}

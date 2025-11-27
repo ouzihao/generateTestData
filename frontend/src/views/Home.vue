@@ -199,28 +199,48 @@ onUnmounted(() => {
 
 <style scoped>
 .home {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
 .quick-actions {
   display: flex;
-  gap: 15px;
+  gap: 16px;
   flex-wrap: wrap;
+}
+
+.quick-actions .el-button {
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.quick-actions .el-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .system-info {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 15px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
 }
 
 .info-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 14px 0;
+  border-bottom: 1px solid #e4e7ed;
+  transition: all 0.3s ease;
+}
+
+.info-item:hover {
+  padding-left: 8px;
+  border-left: 3px solid #409EFF;
 }
 
 .info-item:last-child {
@@ -228,17 +248,24 @@ onUnmounted(() => {
 }
 
 .info-label {
-  font-weight: 500;
+  font-weight: 600;
   color: #606266;
+  font-size: 14px;
 }
 
 .info-value {
   color: #303133;
+  font-weight: 500;
+  font-size: 14px;
 }
 
 @media (max-width: 768px) {
   .quick-actions {
     flex-direction: column;
+  }
+  
+  .quick-actions .el-button {
+    width: 100%;
   }
   
   .system-info {

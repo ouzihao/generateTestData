@@ -296,11 +296,98 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.datasource {
+  max-width: 100%;
+}
+
 .button-group {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-/* 组件特定样式 */
+.button-group .el-button {
+  transition: all 0.3s ease;
+}
+
+.button-group .el-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 表格样式优化 */
+.table-container :deep(.el-table) {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.table-container :deep(.el-table th) {
+  background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
+  font-weight: 600;
+}
+
+.table-container :deep(.el-table tr:hover) {
+  background: #f0f9ff;
+}
+
+/* 对话框样式优化 */
+:deep(.el-dialog) {
+  border-radius: 12px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  border-bottom: 1px solid #e4e7ed;
+}
+
+:deep(.el-dialog__title) {
+  font-size: 18px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #409EFF, #66b1ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+:deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px;
+  background: #f8f9fa;
+  border-top: 1px solid #e4e7ed;
+}
+
+/* 表单样式优化 */
+:deep(.el-form-item__label) {
+  font-weight: 500;
+  color: #606266;
+}
+
+:deep(.el-input__wrapper) {
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+:deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px #409EFF inset;
+}
+
+:deep(.el-select .el-input__wrapper) {
+  border-radius: 6px;
+}
+
+@media (max-width: 768px) {
+  .button-group {
+    width: 100%;
+  }
+  
+  .button-group .el-button {
+    flex: 1;
+    min-width: 100px;
+  }
+}
 </style>

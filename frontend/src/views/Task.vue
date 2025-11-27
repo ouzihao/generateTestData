@@ -102,6 +102,7 @@
       width="1200px"
       top="5vh"
       @close="resetForm"
+      class="task-dialog"
     >
       <template #header>
         <div class="dialog-header">
@@ -117,7 +118,7 @@
         class="form-container"
       >
         <el-form-item label="任务名称" prop="name">
-          <el-input v-model="formData.name" placeholder="请输入任务名称" />
+          <el-input v-model="formData.name" placeholder="请输入任务名称" class="form-item-full" />
         </el-form-item>
         <el-form-item label="任务类型" prop="type">
           <el-radio-group v-model="formData.type">
@@ -133,7 +134,7 @@
               <el-option
                 v-for="ds in dataSourceList"
                 :key="ds.id"
-                :label="ds.name"
+                :label="ds.name + ' --> ' +  ds.database"
                 :value="ds.id"
               />
             </el-select>
@@ -160,7 +161,7 @@
             </el-radio-group>
           </el-form-item>
           <el-form-item label="输出路径" prop="outputPath" v-if="formData.outputType === 'sql'">
-            <el-input v-model="formData.outputPath" placeholder="请输入SQL文件路径" />
+            <el-input v-model="formData.outputPath" placeholder="请输入SQL文件路径" class="form-item-full" />
           </el-form-item>
         </template>
         
@@ -172,6 +173,7 @@
               type="textarea"
               :rows="6"
               placeholder="请输入JSON结构，例如：{'name': 'string', 'age': 'number'}"
+              class="form-item-full"
             />
             <div v-if="jsonParseError" class="json-error-tip">
               <el-alert
@@ -189,7 +191,7 @@
             </el-radio-group>
           </el-form-item>
           <el-form-item label="输出路径" prop="outputPath">
-            <el-input v-model="formData.outputPath" :placeholder="formData.outputType === 'json' ? '请输入JSON文件路径' : '请输入TXT文件路径'" />
+            <el-input v-model="formData.outputPath" :placeholder="formData.outputType === 'json' ? '请输入JSON文件路径' : '请输入TXT文件路径'" class="form-item-full" />
           </el-form-item>
         </template>
         
@@ -1745,24 +1747,39 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ============================================
+   任务管理页面样式
+   ============================================ */
+.task {
+  max-width: 100%;
+}
+
 .field-rules {
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  padding: 15px;
+  border: 1px solid var(--border-light, #e4e7ed);
+  border-radius: var(--radius-md, 8px);
+  padding: 20px;
   max-height: 500px;
   overflow-y: auto;
   min-height: 200px;
+  background: var(--bg-secondary, #f5f7fa);
+  transition: var(--transition-base, all 0.3s ease);
+}
+
+.field-rules:hover {
+  border-color: var(--primary-color, #409EFF);
 }
 
 .field-rule-item {
   display: flex;
   flex-direction: column;
-  margin-bottom: 15px;
-  padding: 15px;
-  background: #f5f7fa;
-  border-radius: 4px;
-  transition: all 0.3s ease;
-  gap: 10px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #ffffff;
+  border-radius: 8px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  gap: 12px;
+  border: 1px solid #e4e7ed;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .field-rule-item:last-child {
@@ -1770,42 +1787,58 @@ onUnmounted(() => {
 }
 
 .field-rule-item:hover {
-  background: #e8f4fd;
+  background: #f0f9ff;
+  border-color: #409EFF;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.15);
+  transform: translateY(-2px);
 }
 
 /* 嵌套字段样式 */
 .nested-field {
-  border-left: 3px solid #409eff;
-  background: #ecf5ff;
+  border-left: 4px solid #409eff;
+  background: linear-gradient(90deg, #ecf5ff 0%, #ffffff 100%);
 }
 
 .nested-field .field-name {
   color: #409eff;
+  font-weight: 600;
 }
 
 /* 数组字段样式 */
 .array-field {
-  border-left: 3px solid #67c23a;
-  background: #f0f9ff;
+  border-left: 4px solid #67c23a;
+  background: linear-gradient(90deg, #f0f9ff 0%, #ffffff 100%);
 }
 
 .array-field .field-name {
   color: #67c23a;
+  font-weight: 600;
 }
 
 /* 深层嵌套字段样式 */
 .field-rule-item.nested-array-field {
-  border-left: 3px solid #f56c6c;
-  background: #fef0f0;
+  border-left: 4px solid #f56c6c;
+  background: linear-gradient(90deg, #fef0f0 0%, #ffffff 100%);
 }
 
 .field-rule-item.nested-array-field .field-name {
   color: #f56c6c;
+  font-weight: 600;
 }
 
 .header-buttons {
   display: flex;
-  gap: 10px;
+  gap: 12px;
+}
+
+.header-buttons .el-button {
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
+  transition: all 0.3s ease;
+}
+
+.header-buttons .el-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
 }
 
 .button-group {
@@ -1822,8 +1855,9 @@ onUnmounted(() => {
 }
 
 .field-name {
-  font-weight: 500;
+  font-weight: 600;
   color: #303133;
+  font-size: 14px;
 }
 
 .field-type {
@@ -1854,29 +1888,53 @@ onUnmounted(() => {
 }
 
 .preview-card {
-  margin-top: 10px;
+  margin-top: 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
 }
 
 .preview-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
+  border-bottom: 1px solid #e4e7ed;
 }
 
 .preview-content {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 4px;
-  padding: 15px;
+  background: #1e1e1e;
+  border: none;
+  border-radius: 0;
+  padding: 20px;
   margin: 0;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #495057;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d4d4d4;
   max-height: 400px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-all;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.preview-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.preview-content::-webkit-scrollbar-track {
+  background: #252526;
+}
+
+.preview-content::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 4px;
+}
+
+.preview-content::-webkit-scrollbar-thumb:hover {
+  background: #4e4e4e;
 }
 .object-field {
   border-left: 3px solid #e6a23c;
@@ -2057,12 +2115,112 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   width: 100%;
+  padding: 4px 0;
 }
 
 .dialog-title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
-  color: #303133;
+  background: linear-gradient(135deg, #409EFF, #66b1ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 对话框样式 */
+.task-dialog :deep(.el-dialog) {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+}
+
+.task-dialog :deep(.el-dialog__header) {
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.task-dialog :deep(.el-dialog__body) {
+  padding: 24px;
+  background: #ffffff;
+}
+
+.task-dialog :deep(.el-dialog__footer) {
+  padding: 16px 24px;
+  background: #f8f9fa;
+  border-top: 1px solid #e4e7ed;
+}
+
+/* 表单容器样式 */
+.form-container {
+  width: 100%;
+}
+
+/* 表单项全宽样式 */
+.form-item-full {
+  width: 100% !important;
+}
+
+/* 确保表单项内容区域能够充分利用空间 */
+.form-container :deep(.el-form-item) {
+  width: 100%;
+  margin-bottom: 22px;
+}
+
+.form-container :deep(.el-form-item__content) {
+  flex: 1;
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+}
+
+/* 确保输入框全宽显示 */
+.form-container :deep(.el-input) {
+  width: 100% !important;
+  flex: 1;
+}
+
+.form-container :deep(.el-input__wrapper) {
+  width: 100% !important;
+}
+
+/* 确保选择器全宽显示 */
+.form-container :deep(.el-select) {
+  width: 100% !important;
+  flex: 1;
+}
+
+.form-container :deep(.el-select .el-input) {
+  width: 100% !important;
+}
+
+.form-container :deep(.el-select .el-input__wrapper) {
+  width: 100% !important;
+}
+
+/* 确保数字输入框全宽 */
+.form-container :deep(.el-input-number) {
+  width: 100% !important;
+  flex: 1;
+}
+
+.form-container :deep(.el-input-number .el-input) {
+  width: 100% !important;
+}
+
+.form-container :deep(.el-input-number .el-input__wrapper) {
+  width: 100% !important;
+}
+
+/* 确保文本域全宽 */
+.form-container :deep(.el-textarea) {
+  width: 100% !important;
+  flex: 1;
+}
+
+.form-container :deep(.el-textarea__inner) {
+  width: 100% !important;
+  min-width: 100%;
 }
 
 @media (max-width: 768px) {
