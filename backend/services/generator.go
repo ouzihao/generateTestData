@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dop251/goja"
+	"github.com/go-faker/faker/v4"
 	regen "github.com/zach-klippenstein/goregen"
 )
 
@@ -25,7 +27,7 @@ func NewGeneratorService() *GeneratorService {
 }
 
 // 生成单条数据库记录
-func (g *GeneratorService) GenerateRecord(tableInfo *models.TableInfo, rules map[string]models.FieldRule, uniqueFields []string) (map[string]interface{}, error) {
+func (g *GeneratorService) GenerateRecord(tableInfo *models.TableInfo, rules map[string]models.FieldRule, uniqueFields []string, context map[string]interface{}) (map[string]interface{}, error) {
 	record := make(map[string]interface{})
 
 	for _, column := range tableInfo.Columns {
@@ -35,7 +37,7 @@ func (g *GeneratorService) GenerateRecord(tableInfo *models.TableInfo, rules map
 			rule = g.getDefaultRule(column)
 		}
 
-		value, err := g.generateValue(column.Name, column.Type, rule, uniqueFields)
+		value, err := g.generateValue(column.Name, column.Type, rule, uniqueFields, context)
 		if err != nil {
 			return nil, fmt.Errorf("生成字段 %s 的值失败: %v", column.Name, err)
 		}
@@ -47,8 +49,8 @@ func (g *GeneratorService) GenerateRecord(tableInfo *models.TableInfo, rules map
 }
 
 // 生成JSON对象
-func (g *GeneratorService) GenerateJSON(schema map[string]interface{}, rules map[string]models.FieldRule, uniqueFields []string) (map[string]interface{}, error) {
-	result, err := g.generateJSONValue("", schema, rules, uniqueFields)
+func (g *GeneratorService) GenerateJSON(schema map[string]interface{}, rules map[string]models.FieldRule, uniqueFields []string, context map[string]interface{}) (map[string]interface{}, error) {
+	result, err := g.generateJSONValue("", schema, rules, uniqueFields, context)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +61,7 @@ func (g *GeneratorService) GenerateJSON(schema map[string]interface{}, rules map
 }
 
 // 生成值
-func (g *GeneratorService) generateValue(fieldName, fieldType string, rule models.FieldRule, uniqueFields []string) (interface{}, error) {
+func (g *GeneratorService) generateValue(fieldName, fieldType string, rule models.FieldRule, uniqueFields []string, context map[string]interface{}) (interface{}, error) {
 	var value interface{}
 	var err error
 
@@ -93,7 +95,7 @@ func (g *GeneratorService) generateValue(fieldName, fieldType string, rule model
 	case "uuid":
 		value = g.generateUUID()
 	case "custom":
-		value, err = g.generateCustom(rule)
+		value, err = g.generateCustom(rule, context)
 	default:
 		// 为默认情况也添加字段名信息
 		if rule.Parameters == nil {
@@ -111,7 +113,7 @@ func (g *GeneratorService) generateValue(fieldName, fieldType string, rule model
 	if g.isUniqueField(fieldName, uniqueFields) {
 		if g.isValueExists(fieldName, value) {
 			// 如果值已存在，重新生成
-			return g.generateValue(fieldName, fieldType, rule, uniqueFields)
+			return g.generateValue(fieldName, fieldType, rule, uniqueFields, context)
 		}
 		g.addUniqueValue(fieldName, value)
 	}
@@ -352,20 +354,67 @@ func (g *GeneratorService) generateEnum(rule models.FieldRule) (interface{}, err
 }
 
 // 生成自定义值
-func (g *GeneratorService) generateCustom(rule models.FieldRule) (interface{}, error) {
+func (g *GeneratorService) generateCustom(rule models.FieldRule, context map[string]interface{}) (interface{}, error) {
 	script, ok := rule.Parameters["script"].(string)
 	if !ok {
 		return nil, fmt.Errorf("自定义规则需要script参数")
 	}
 
-	// 简化实现，暂时返回随机字符串
-	// 后续可以集成JavaScript引擎执行script
-	_ = script // 避免未使用变量警告
-	return g.generateRandomString(10), nil
+	vm := goja.New()
+
+	// 注入上下文变量
+	for key, value := range context {
+		vm.Set(key, value)
+	}
+
+	// 注入辅助函数
+	vm.Set("randomInt", func(min, max int) int {
+		return rand.Intn(max-min+1) + min
+	})
+
+	// 注入 Faker 对象
+	fakerObj := vm.NewObject()
+	fakerObj.Set("Name", faker.Name)
+	fakerObj.Set("Email", faker.Email)
+	fakerObj.Set("Phone", faker.Phonenumber)
+	fakerObj.Set("IPv4", faker.IPv4)
+	fakerObj.Set("Date", faker.Date)
+	fakerObj.Set("Sentence", faker.Sentence)
+	fakerObj.Set("UUID", faker.UUIDHyphenated)
+
+	// 中文数据支持
+	fakerObj.Set("ChineseName", faker.ChineseName)
+	fakerObj.Set("ChinesePhone", func() string {
+		prefixes := []string{"133", "135", "136", "137", "138", "139", "150", "151", "152", "157", "158", "159", "182", "186", "187", "188", "189", "198", "199"}
+		prefix := prefixes[rand.Intn(len(prefixes))]
+		return fmt.Sprintf("%s%08d", prefix, rand.Intn(100000000))
+	})
+	fakerObj.Set("ChineseIdCard", func() string {
+		// 简单生成18位身份证号：6位地区码 + 8位生日 + 3位顺序码 + 1位校验码
+		// 这里只做简单模拟
+		areaCodes := []string{"110101", "310101", "440101", "330106", "510107"}
+		area := areaCodes[rand.Intn(len(areaCodes))]
+
+		year := rand.Intn(50) + 1970 // 1970-2020
+		month := rand.Intn(12) + 1
+		day := rand.Intn(28) + 1
+
+		return fmt.Sprintf("%s%d%02d%02d%04d", area, year, month, day, rand.Intn(10000))
+	})
+
+	vm.Set("faker", fakerObj)
+
+	// 执行脚本
+	val, err := vm.RunString(script)
+	if err != nil {
+		return nil, fmt.Errorf("执行自定义脚本失败: %v", err)
+	}
+
+	return val.Export(), nil
 }
 
 // 生成JSON值（递归处理嵌套结构）
-func (g *GeneratorService) generateJSONValue(path string, schema interface{}, rules map[string]models.FieldRule, uniqueFields []string) (interface{}, error) {
+func (g *GeneratorService) generateJSONValue(path string, schema interface{}, rules map[string]models.FieldRule, uniqueFields []string, context map[string]interface{}) (interface{}, error) {
 	switch v := schema.(type) {
 	case map[string]interface{}:
 		result := make(map[string]interface{})
@@ -376,7 +425,7 @@ func (g *GeneratorService) generateJSONValue(path string, schema interface{}, ru
 			}
 			fieldPath += key
 
-			generatedValue, err := g.generateJSONValue(fieldPath, value, rules, uniqueFields)
+			generatedValue, err := g.generateJSONValue(fieldPath, value, rules, uniqueFields, context)
 			if err != nil {
 				return nil, err
 			}
@@ -401,7 +450,7 @@ func (g *GeneratorService) generateJSONValue(path string, schema interface{}, ru
 		// 使用统一的数组元素路径格式，与前端保持一致
 		arrayElementPath := path + "[]"
 		for i := 0; i < arrayLength; i++ {
-			generatedValue, err := g.generateJSONValue(arrayElementPath, v[0], rules, uniqueFields)
+			generatedValue, err := g.generateJSONValue(arrayElementPath, v[0], rules, uniqueFields, context)
 			if err != nil {
 				return nil, err
 			}
@@ -413,23 +462,23 @@ func (g *GeneratorService) generateJSONValue(path string, schema interface{}, ru
 		// 基本类型，根据规则生成值
 		// 对于JSON schema中的字符串值，统一按string类型处理
 		if rule, exists := rules[path]; exists {
-			return g.generateValue(path, "string", rule, uniqueFields)
+			return g.generateValue(path, "string", rule, uniqueFields, context)
 		}
-		return g.generateValue(path, "string", models.FieldRule{Type: "random"}, uniqueFields)
+		return g.generateValue(path, "string", models.FieldRule{Type: "random"}, uniqueFields, context)
 
 	case float64:
 		// 处理数值类型（浮点数）
 		if rule, exists := rules[path]; exists {
-			return g.generateValue(path, "decimal", rule, uniqueFields)
+			return g.generateValue(path, "decimal", rule, uniqueFields, context)
 		}
-		return g.generateValue(path, "decimal", models.FieldRule{Type: "random"}, uniqueFields)
+		return g.generateValue(path, "decimal", models.FieldRule{Type: "random"}, uniqueFields, context)
 
 	case int:
 		// 处理数值类型（整数）
 		if rule, exists := rules[path]; exists {
-			return g.generateValue(path, "int", rule, uniqueFields)
+			return g.generateValue(path, "int", rule, uniqueFields, context)
 		}
-		return g.generateValue(path, "int", models.FieldRule{Type: "random"}, uniqueFields)
+		return g.generateValue(path, "int", models.FieldRule{Type: "random"}, uniqueFields, context)
 
 	default:
 		return v, nil
@@ -585,7 +634,11 @@ func (g *GeneratorService) generateDateSequence(fieldName string, rule models.Fi
 
 	startTime, err := time.Parse("2006-01-02", startStr)
 	if err != nil {
-		return nil, fmt.Errorf("无效的开始日期格式: %s", startStr)
+		// 尝试解析带时间的格式
+		startTime, err = time.Parse("2006-01-02 15:04:05", startStr)
+		if err != nil {
+			return nil, fmt.Errorf("无效的开始日期格式: %s", startStr)
+		}
 	}
 
 	// 获取步长（天数）

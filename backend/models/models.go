@@ -26,6 +26,7 @@ type TaskType string
 const (
 	TaskTypeDatabase TaskType = "database"
 	TaskTypeJSON     TaskType = "json"
+	TaskTypeCSV      TaskType = "csv"
 )
 
 // 输出类型枚举
@@ -36,6 +37,7 @@ const (
 	OutputTypeSQL      OutputType = "sql"
 	OutputTypeJSON     OutputType = "json"
 	OutputTypeTXT      OutputType = "txt"
+	OutputTypeCSV      OutputType = "csv"
 )
 
 // 数据源配置

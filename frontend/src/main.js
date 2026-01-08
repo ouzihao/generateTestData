@@ -6,6 +6,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import router from './router'
 import './style.css'
+import { install as VueMonacoEditorPlugin } from '@guolao/vue-monaco-editor'
 
 const app = createApp(App)
 
@@ -17,5 +18,6 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 app.use(createPinia())
 app.use(router)
 app.use(ElementPlus)
+app.use(VueMonacoEditorPlugin)
 
 app.mount('#app')

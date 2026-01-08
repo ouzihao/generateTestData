@@ -2,6 +2,7 @@ package services
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"generateTestData/backend/config"
@@ -332,4 +333,67 @@ func (s *ExportService) connectDatabase(dataSource *models.DataSource) (*sql.DB,
 	default:
 		return nil, fmt.Errorf("不支持的数据库类型: %s", dataSource.Type)
 	}
+}
+
+// ExportToCSV 导出为CSV文件
+func (s *ExportService) ExportToCSV(fileName string, headers []string, records []map[string]interface{}, isFirstBatch bool) error {
+
+	// 确保文件名有正确的后缀
+	fileName = ensureFileExtension(fileName, "csv")
+
+	// 自动拼接文件路径
+	filePath := filepath.Join(config.AppConfig.GenerateDir, fileName)
+
+	// 打开文件
+	flag := os.O_APPEND | os.O_WRONLY | os.O_CREATE
+	if isFirstBatch {
+		flag = os.O_TRUNC | os.O_WRONLY | os.O_CREATE
+	}
+
+	file, err := os.OpenFile(filePath, flag, 0644)
+	if err != nil {
+		return fmt.Errorf("打开文件失败: %v", err)
+	}
+	defer file.Close()
+
+	// 写入BOM头，防止中文乱码 (仅首次写入)
+	if isFirstBatch {
+		file.WriteString("\xEF\xBB\xBF")
+	}
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// 写入表头 (仅首次写入)
+	if isFirstBatch {
+		if err := writer.Write(headers); err != nil {
+			return fmt.Errorf("写入表头失败: %v", err)
+		}
+	}
+
+	// 写入数据
+	for _, record := range records {
+		row := make([]string, len(headers))
+		for i, header := range headers {
+			val := record[header]
+			// 处理不同类型的值
+			switch v := val.(type) {
+			case nil:
+				row[i] = ""
+			case string:
+				row[i] = v
+			case float64:
+				// 去除多余的小数点0
+				str := fmt.Sprintf("%f", v)
+				row[i] = strings.TrimRight(strings.TrimRight(str, "0"), ".")
+			default:
+				row[i] = fmt.Sprintf("%v", v)
+			}
+		}
+		if err := writer.Write(row); err != nil {
+			return fmt.Errorf("写入数据失败: %v", err)
+		}
+	}
+
+	return nil
 }

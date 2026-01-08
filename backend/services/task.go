@@ -96,6 +96,8 @@ func (s *TaskService) executeTaskAsync(task *models.Task) {
 		err = s.executeDatabaseTask(task)
 	case models.TaskTypeJSON:
 		err = s.executeJSONTask(task)
+	case models.TaskTypeCSV:
+		err = s.executeCSVTask(task)
 	default:
 		err = fmt.Errorf("不支持的任务类型: %s", task.Type)
 	}
@@ -158,7 +160,12 @@ func (s *TaskService) executeDatabaseTask(task *models.Task) error {
 		// 生成一批数据
 		records := make([]map[string]interface{}, currentBatch)
 		for i := int64(0); i < currentBatch; i++ {
-			record, err := generatorService.GenerateRecord(tableInfo, rules, uniqueFields)
+			// 构造上下文
+			context := map[string]interface{}{
+				"rowIndex": generated + i,
+			}
+
+			record, err := generatorService.GenerateRecord(tableInfo, rules, uniqueFields, context)
 			if err != nil {
 				return fmt.Errorf("生成记录失败: %v", err)
 			}
@@ -223,7 +230,12 @@ func (s *TaskService) executeJSONTask(task *models.Task) error {
 		// 生成一批数据
 		jsonObjects := make([]map[string]interface{}, currentBatch)
 		for i := int64(0); i < currentBatch; i++ {
-			jsonObj, err := generatorService.GenerateJSON(schema, rules, uniqueFields)
+			// 构造上下文
+			context := map[string]interface{}{
+				"rowIndex": generated + i,
+			}
+
+			jsonObj, err := generatorService.GenerateJSON(schema, rules, uniqueFields, context)
 			if err != nil {
 				return fmt.Errorf("生成JSON对象失败: %v", err)
 			}
@@ -278,6 +290,13 @@ func (s *TaskService) validateTask(task *models.Task) error {
 		}
 		if task.OutputPath == "" {
 			return fmt.Errorf("JSON任务必须指定输出路径")
+		}
+	case models.TaskTypeCSV:
+		if task.JSONSchema == "" {
+			return fmt.Errorf("CSV任务必须指定列结构")
+		}
+		if task.OutputPath == "" {
+			return fmt.Errorf("CSV任务必须指定输出路径")
 		}
 	default:
 		return fmt.Errorf("不支持的任务类型: %s", task.Type)
@@ -383,9 +402,41 @@ func (s *TaskService) GeneratePreviewData(task *models.Task) (interface{}, error
 	} else if task.Type == "json" {
 		// JSON任务预览
 		return s.generateJSONPreview(task, fieldRules)
+	} else if task.Type == "csv" {
+		// CSV任务预览
+		return s.generateCSVPreview(task, fieldRules)
 	}
 
 	return nil, fmt.Errorf("不支持的任务类型: %s", task.Type)
+}
+
+// 生成CSV预览数据
+func (s *TaskService) generateCSVPreview(task *models.Task, fieldRules map[string]models.FieldRule) (interface{}, error) {
+	// 解析列结构
+	var columns []models.ColumnInfo
+	if err := json.Unmarshal([]byte(task.JSONSchema), &columns); err != nil {
+		return nil, fmt.Errorf("解析CSV列结构失败: %v", err)
+	}
+
+	// 构造 TableInfo
+	tableInfo := &models.TableInfo{
+		TableName: "csv_preview",
+		Columns:   columns,
+	}
+
+	// 为预览创建独立的生成器实例
+	generatorService := NewGeneratorService()
+
+	// 生成一条数据
+	context := map[string]interface{}{
+		"rowIndex": int64(0),
+	}
+	data, err := generatorService.GenerateRecord(tableInfo, fieldRules, []string{}, context)
+	if err != nil {
+		return nil, fmt.Errorf("生成数据失败: %v", err)
+	}
+
+	return data, nil
 }
 
 // 生成数据库预览数据
@@ -406,7 +457,10 @@ func (s *TaskService) generateDatabasePreview(task *models.Task, fieldRules map[
 	generatorService := NewGeneratorService()
 
 	// 生成一条数据
-	data, err := generatorService.GenerateRecord(tableInfo, fieldRules, []string{})
+	context := map[string]interface{}{
+		"rowIndex": int64(0),
+	}
+	data, err := generatorService.GenerateRecord(tableInfo, fieldRules, []string{}, context)
 	if err != nil {
 		return nil, fmt.Errorf("生成数据失败: %v", err)
 	}
@@ -426,10 +480,88 @@ func (s *TaskService) generateJSONPreview(task *models.Task, fieldRules map[stri
 	generatorService := NewGeneratorService()
 
 	// 生成一条数据
-	data, err := generatorService.GenerateJSON(schema, fieldRules, []string{})
+	context := map[string]interface{}{
+		"rowIndex": int64(0),
+	}
+	data, err := generatorService.GenerateJSON(schema, fieldRules, []string{}, context)
 	if err != nil {
 		return nil, fmt.Errorf("生成数据失败: %v", err)
 	}
 
 	return data, nil
+}
+
+// 执行CSV任务
+func (s *TaskService) executeCSVTask(task *models.Task) error {
+	// 解析列结构 (复用JSONSchema字段存储列信息)
+	// 格式: [{"name": "col1", "type": "string"}, ...]
+	var columns []models.ColumnInfo
+	if err := json.Unmarshal([]byte(task.JSONSchema), &columns); err != nil {
+		return fmt.Errorf("解析CSV列结构失败: %v", err)
+	}
+
+	// 提取列名作为表头
+	headers := make([]string, len(columns))
+	for i, col := range columns {
+		headers[i] = col.Name
+	}
+
+	// 解析字段规则
+	rules, err := task.GetFieldRules()
+	if err != nil {
+		return fmt.Errorf("解析字段规则失败: %v", err)
+	}
+
+	// 获取唯一字段
+	uniqueFields, err := task.GetUniqueFields()
+	if err != nil {
+		return fmt.Errorf("解析唯一字段失败: %v", err)
+	}
+
+	// 为每个任务创建独立的生成器实例
+	generatorService := NewGeneratorService()
+
+	// 构造 TableInfo 供生成器使用
+	tableInfo := &models.TableInfo{
+		TableName: "csv_export",
+		Columns:   columns,
+	}
+
+	// 分批生成数据
+	batchSize := int64(5000) // CSV每批5000条
+	var generated int64
+
+	for generated < task.Count {
+		currentBatch := batchSize
+		if generated+batchSize > task.Count {
+			currentBatch = task.Count - generated
+		}
+
+		// 生成一批数据
+		records := make([]map[string]interface{}, currentBatch)
+		for i := int64(0); i < currentBatch; i++ {
+			// 构造上下文
+			context := map[string]interface{}{
+				"rowIndex": generated + i,
+			}
+
+			record, err := generatorService.GenerateRecord(tableInfo, rules, uniqueFields, context)
+			if err != nil {
+				return fmt.Errorf("生成记录失败: %v", err)
+			}
+			records[i] = record
+		}
+
+		// 导出到CSV文件
+		err = s.exportService.ExportToCSV(task.OutputPath, headers, records, generated == 0)
+		if err != nil {
+			return fmt.Errorf("导出CSV失败: %v", err)
+		}
+
+		generated += currentBatch
+		progress := math.Round(float64(generated) / float64(task.Count) * 100)
+		s.updateTaskProgress(task.ID, progress)
+	}
+
+	return nil
 }

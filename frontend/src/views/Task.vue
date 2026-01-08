@@ -21,12 +21,12 @@
         <el-table :data="taskList" v-loading="loading">
           <el-table-column prop="name" label="任务名称" />
           <el-table-column prop="type" label="类型">
-            <template #default="{ row }">
-              <el-tag :type="row.type === 'database' ? 'primary' : 'success'">
-                {{ row.type === 'database' ? '数据库' : 'JSON' }}
-              </el-tag>
-            </template>
-          </el-table-column>
+        <template #default="{ row }">
+          <el-tag :type="row.type === 'database' ? 'primary' : (row.type === 'csv' ? 'warning' : 'success')">
+            {{ row.type === 'database' ? '数据库' : (row.type === 'csv' ? 'CSV' : 'JSON') }}
+          </el-tag>
+        </template>
+      </el-table-column>
           <el-table-column prop="count" label="生成数量" />
           <el-table-column prop="status" label="状态">
             <template #default="{ row }">
@@ -124,6 +124,7 @@
           <el-radio-group v-model="formData.type">
             <el-radio label="database">数据库任务</el-radio>
             <el-radio label="json">JSON任务</el-radio>
+            <el-radio label="csv">CSV任务</el-radio>
           </el-radio-group>
         </el-form-item>
         
@@ -195,12 +196,43 @@
           </el-form-item>
         </template>
         
+        <!-- CSV任务配置 -->
+        <template v-if="formData.type === 'csv'">
+          <el-form-item label="CSV列定义">
+            <div class="csv-columns">
+              <div v-for="(col, index) in csvColumns" :key="index" class="csv-column-item" style="margin-bottom: 10px; display: flex; align-items: center;">
+                <el-input v-model="col.name" placeholder="列名" style="width: 200px; margin-right: 10px" />
+                <el-select v-model="col.type" placeholder="类型" style="width: 150px; margin-right: 10px">
+                  <el-option label="字符串" value="string" />
+                  <el-option label="整数" value="integer" />
+                  <el-option label="浮点数" value="float" />
+                  <el-option label="布尔值" value="boolean" />
+                  <el-option label="日期" value="date" />
+                  <el-option label="邮箱" value="email" />
+                  <el-option label="手机号" value="phone" />
+                  <el-option label="姓名" value="name" />
+                  <el-option label="地址" value="address" />
+                </el-select>
+                <el-button type="danger" circle @click="removeCsvColumn(index)">
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </div>
+              <el-button type="primary" plain @click="addCsvColumn">
+                <el-icon><Plus /></el-icon> 添加列
+              </el-button>
+            </div>
+          </el-form-item>
+          <el-form-item label="输出文件名" prop="outputPath">
+            <el-input v-model="formData.outputPath" placeholder="请输入CSV文件名，如：data.csv" class="form-item-full" />
+          </el-form-item>
+        </template>
+        
         <el-form-item label="生成数量" prop="count">
           <el-input-number v-model="formData.count" :min="1" :max="1000000" class="form-item-full" />
         </el-form-item>
         
         <!-- 字段规则配置 -->
-        <el-form-item label="字段规则" v-if="tableStructure.length > 0 || formData.type === 'json'">
+        <el-form-item label="字段规则" v-if="tableStructure.length > 0 || formData.type === 'json' || formData.type === 'csv'">
           <div class="field-rules">
             <div v-for="(field, index) in getFields" :key="index" class="field-rule-item" :class="{
               'nested-field': field.name.includes('.'),
@@ -268,24 +300,37 @@
                   
                   <!-- 随机配置 -->
                   <div v-if="fieldRules[field.name] === 'random' && isDateField(field)" class="random-date-config">
-                    <el-input 
+                    <el-date-picker 
                       v-model="fieldRuleParams[field.name].start"
-                      placeholder="开始日期 (YYYY-MM-DD，可选)"
+                      :type="getDatePickerType(field)"
+                      placeholder="开始日期"
+                      :value-format="getDateValueFormat(field)"
                       size="small"
                       class="param-input-small"
                     />
-                    <el-input 
+                    <el-date-picker 
                       v-model="fieldRuleParams[field.name].end"
-                      placeholder="结束日期 (YYYY-MM-DD，可选)"
+                      :type="getDatePickerType(field)"
+                      placeholder="结束日期"
+                      :value-format="getDateValueFormat(field)"
                       size="small"
                       class="param-input-small"
                     />
-                    <el-input 
+                    <el-select 
                       v-model="fieldRuleParams[field.name].format"
                       placeholder="日期格式 (可选)"
                       size="small"
                       class="param-input-small"
-                    />
+                      filterable
+                      allow-create
+                    >
+                      <el-option 
+                        v-for="item in dateFormats" 
+                        :key="item.value" 
+                        :label="item.label" 
+                        :value="item.value" 
+                      />
+                    </el-select>
                   </div>
                   
                   <!-- 范围配置 -->
@@ -312,8 +357,8 @@
                     size="small"
                     class="param-input"
                     :fetch-suggestions="getRegexSuggestions"
-                    @input="handleRegexInput"
-                    @select="handleRegexSelect"
+                    @input="(value) => handleRegexInput(field.name, value)"
+                    @select="(item) => handleRegexSelect(field.name, item)"
                   >
                     <template #default="{ item }">
                       <div class="regex-suggestion-item">
@@ -335,9 +380,11 @@
                   
                   <!-- 日期序列配置 -->
                   <div v-if="fieldRules[field.name] === 'date_sequence'" class="date-sequence-config">
-                    <el-input 
+                    <el-date-picker 
                       v-model="fieldRuleParams[field.name].start"
-                      placeholder="起始日期 (YYYY-MM-DD)"
+                      :type="getDatePickerType(field)"
+                      placeholder="起始日期"
+                      :value-format="getDateValueFormat(field)"
                       size="small"
                       class="param-input-small"
                     />
@@ -352,23 +399,58 @@
                       placement="top"
                       effect="dark"
                     >
-                      <el-input 
+                      <el-select 
                         v-model="fieldRuleParams[field.name].format"
                         placeholder="日期格式 (如: 2006-01-02, 可选)"
                         size="small"
                         class="param-input-small"
-                      />
+                        filterable
+                        allow-create
+                      >
+                        <el-option 
+                          v-for="item in dateFormats" 
+                          :key="item.value" 
+                          :label="item.label" 
+                          :value="item.value" 
+                        />
+                      </el-select>
                     </el-tooltip>
                   </div>
                   
                   <!-- 自定义配置 -->
-                  <el-input 
-                    v-if="fieldRules[field.name] === 'custom'"
-                    v-model="fieldRuleParams[field.name].script"
-                    placeholder="请输入自定义脚本"
-                    size="small"
-                    class="param-input"
-                  />
+                  <div v-if="fieldRules[field.name] === 'custom'" class="custom-script-editor" style="width: 100%">
+                    <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                      <el-tooltip
+                        effect="dark"
+                        placement="top-start"
+                        content="支持 rowIndex, faker 等变量。示例: faker.ChineseName() + '_' + rowIndex"
+                      >
+                        <el-button type="info" link size="small">
+                          <el-icon style="margin-right: 4px"><InfoFilled /></el-icon>
+                          查看脚本编写说明
+                        </el-button>
+                      </el-tooltip>
+                    </div>
+                    <vue-monaco-editor
+                        v-model:value="fieldRuleParams[field.name].script"
+                        theme="vs"
+                        language="javascript"
+                        :options="{
+                          minimap: { enabled: false },
+                          automaticLayout: true,
+                          lineNumbers: 'on',
+                          scrollBeyondLastLine: false,
+                          fontSize: 12,
+                          renderLineHighlight: 'none',
+                          folding: false,
+                          wordWrap: 'on'
+                        }"
+                        style="height: 150px; width: 100%; border: 1px solid #dcdfe6; border-radius: 4px;"
+                      />
+                    <div class="script-help-text" style="font-size: 12px; color: #909399; margin-top: 5px;">
+                      可用变量: rowIndex, randomInt(min, max), faker (Name, Email, Phone, IPv4, Date, Sentence, UUID, ChineseName, ChinesePhone, ChineseIdCard)
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -429,6 +511,7 @@
           <el-radio-group v-model="editingTask.type">
             <el-radio value="database">数据库任务</el-radio>
             <el-radio value="json">JSON任务</el-radio>
+            <el-radio value="csv">CSV任务</el-radio>
           </el-radio-group>
         </el-form-item>
         
@@ -472,6 +555,34 @@
             placeholder="请输入JSON结构"
           />
         </el-form-item>
+
+        <!-- CSV任务配置 -->
+        <template v-if="editingTask.type === 'csv'">
+          <el-form-item label="CSV列定义">
+            <div class="csv-columns">
+              <div v-for="(col, index) in csvColumns" :key="index" class="csv-column-item" style="margin-bottom: 10px; display: flex; align-items: center;">
+                <el-input v-model="col.name" placeholder="列名" style="width: 200px; margin-right: 10px" />
+                <el-select v-model="col.type" placeholder="类型" style="width: 150px; margin-right: 10px">
+                  <el-option label="字符串" value="string" />
+                  <el-option label="整数" value="integer" />
+                  <el-option label="浮点数" value="float" />
+                  <el-option label="布尔值" value="boolean" />
+                  <el-option label="日期" value="date" />
+                  <el-option label="邮箱" value="email" />
+                  <el-option label="手机号" value="phone" />
+                  <el-option label="姓名" value="name" />
+                  <el-option label="地址" value="address" />
+                </el-select>
+                <el-button type="danger" circle @click="removeCsvColumn(index)">
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </div>
+              <el-button type="primary" plain @click="addCsvColumn">
+                <el-icon><Plus /></el-icon> 添加列
+              </el-button>
+            </div>
+          </el-form-item>
+        </template>
         
         <el-form-item label="输出类型" prop="outputType">
           <el-radio-group v-model="editingTask.outputType">
@@ -483,10 +594,13 @@
               <el-radio value="json">JSON文件</el-radio>
               <el-radio value="txt">TXT文件（每行一个JSON）</el-radio>
             </template>
+            <template v-else-if="editingTask.type === 'csv'">
+              <el-radio value="csv">CSV文件</el-radio>
+            </template>
           </el-radio-group>
         </el-form-item>
         
-        <el-form-item label="输出文件名" prop="outputPath" v-if="editingTask.outputType === 'sql' || editingTask.outputType === 'json' || editingTask.outputType === 'txt'">
+        <el-form-item label="输出文件名" prop="outputPath" v-if="editingTask.outputType === 'sql' || editingTask.outputType === 'json' || editingTask.outputType === 'txt' || editingTask.outputType === 'csv'">
           <el-input v-model="editingTask.outputPath" :placeholder="editingTask.outputType === 'sql' ? '请输入SQL文件名，如：data.sql' : editingTask.outputType === 'json' ? '请输入JSON文件名，如：data.json' : '请输入TXT文件名，如：data.txt'" />
         </el-form-item>
         
@@ -511,7 +625,7 @@
             >
               <div class="field-info">
                 <span class="field-name">{{ field.name }}</span>
-                <span class="field-type">({{ field.type }})</span>
+                <span class="field-type" :class="`type-${field.type}`">{{ field.type }}</span>
               </div>
               
               <div class="rule-config">
@@ -528,6 +642,7 @@
                   <el-option label="正则表达式" value="regex" />
                   <el-option label="枚举" value="enum" />
                   <el-option label="引用" value="reference" />
+                  <el-option label="自定义" value="custom" />
                 </el-select>
                 
                 <!-- 根据规则类型显示不同的参数配置 -->
@@ -556,36 +671,51 @@
                 </template>
                 
                 <template v-else-if="fieldRules[field.name]?.type === 'random' && isDateField(field)">
-                  <el-input 
+                  <el-date-picker 
                     :model-value="fieldRules[field.name]?.parameters?.start" 
-                    placeholder="开始日期 (YYYY-MM-DD，可选)"
+                    :type="getDatePickerType(field)"
+                    placeholder="开始日期"
+                    :value-format="getDateValueFormat(field)"
                     size="small"
                     class="param-input-small"
-                    @input="(value) => updateFieldRuleParam(field.name, 'start', value)"
+                    @update:model-value="(value) => updateFieldRuleParam(field.name, 'start', value)"
                   />
-                  <el-input 
+                  <el-date-picker 
                     :model-value="fieldRules[field.name]?.parameters?.end" 
-                    placeholder="结束日期 (YYYY-MM-DD，可选)"
+                    :type="getDatePickerType(field)"
+                    placeholder="结束日期"
+                    :value-format="getDateValueFormat(field)"
                     size="small"
                     class="param-input-small"
-                    @input="(value) => updateFieldRuleParam(field.name, 'end', value)"
+                    @update:model-value="(value) => updateFieldRuleParam(field.name, 'end', value)"
                   />
-                  <el-input 
+                  <el-select 
                     :model-value="fieldRules[field.name]?.parameters?.format" 
                     placeholder="日期格式 (可选)"
                     size="small"
                     class="param-input-small"
-                    @input="(value) => updateFieldRuleParam(field.name, 'format', value)"
-                  />
+                    filterable
+                    allow-create
+                    @change="(value) => updateFieldRuleParam(field.name, 'format', value)"
+                  >
+                    <el-option 
+                      v-for="item in dateFormats" 
+                      :key="item.value" 
+                      :label="item.label" 
+                      :value="item.value" 
+                    />
+                  </el-select>
                 </template>
                 
                 <template v-else-if="fieldRules[field.name]?.type === 'date_sequence'">
-                  <el-input 
+                  <el-date-picker 
                     :model-value="fieldRules[field.name]?.parameters?.start" 
-                    placeholder="起始日期 (YYYY-MM-DD)"
+                    :type="getDatePickerType(field)"
+                    placeholder="起始日期"
+                    :value-format="getDateValueFormat(field)"
                     size="small"
                     class="param-input-small"
-                    @input="(value) => updateFieldRuleParam(field.name, 'start', value)"
+                    @update:model-value="(value) => updateFieldRuleParam(field.name, 'start', value)"
                   />
                   <el-input 
                     :model-value="fieldRules[field.name]?.parameters?.step" 
@@ -599,13 +729,22 @@
                     placement="top"
                     effect="dark"
                   >
-                    <el-input 
+                    <el-select 
                       :model-value="fieldRules[field.name]?.parameters?.format" 
                       placeholder="日期格式 (如: 2006-01-02, 可选)"
                       size="small"
                       class="param-input-small"
-                      @input="(value) => updateFieldRuleParam(field.name, 'format', value)"
-                    />
+                      filterable
+                      allow-create
+                      @change="(value) => updateFieldRuleParam(field.name, 'format', value)"
+                    >
+                      <el-option 
+                        v-for="item in dateFormats" 
+                        :key="item.value" 
+                        :label="item.label" 
+                        :value="item.value" 
+                      />
+                    </el-select>
                   </el-tooltip>
                 </template>
                 
@@ -645,6 +784,43 @@
                     style="width: 200px"
                     @input="(value) => updateFieldRuleParam(field.name, 'field', value)"
                   />
+                </template>
+
+                <template v-else-if="fieldRules[field.name]?.type === 'custom'">
+                  <div class="custom-script-editor" style="width: 100%; margin-top: 10px;">
+                    <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                      <el-tooltip
+                        effect="dark"
+                        placement="top-start"
+                        content="支持 rowIndex, faker 等变量。示例: faker.ChineseName() + '_' + rowIndex"
+                      >
+                        <el-button type="info" link size="small">
+                          <el-icon style="margin-right: 4px"><InfoFilled /></el-icon>
+                          查看脚本编写说明
+                        </el-button>
+                      </el-tooltip>
+                    </div>
+                    <vue-monaco-editor
+                        :value="fieldRules[field.name]?.parameters?.script"
+                        @update:value="(value) => updateFieldRuleParam(field.name, 'script', value)"
+                        theme="vs"
+                        language="javascript"
+                        :options="{
+                          minimap: { enabled: false },
+                          automaticLayout: true,
+                          lineNumbers: 'on',
+                          scrollBeyondLastLine: false,
+                          fontSize: 12,
+                          renderLineHighlight: 'none',
+                          folding: false,
+                          wordWrap: 'on'
+                        }"
+                        style="height: 150px; width: 100%; border: 1px solid #dcdfe6; border-radius: 4px;"
+                      />
+                    <div class="script-help-text" style="font-size: 12px; color: #909399; margin-top: 5px;">
+                      可用变量: rowIndex, randomInt(min, max), faker (Name, Email, Phone, IPv4, Date, Sentence, UUID, ChineseName, ChinesePhone, ChineseIdCard)
+                    </div>
+                  </div>
                 </template>
                 
                 <!-- 数组长度配置 -->
@@ -720,11 +896,22 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, CopyDocument, Document, Download, Delete, Upload, DocumentCopy } from '@element-plus/icons-vue'
 import { taskApi, templateApi } from '@/api/task'
 import { datasourceApi } from '@/api/datasource'
+
+// 日期格式选项
+const dateFormats = [
+  { label: 'YYYY-MM-DD (2006-01-02)', value: '2006-01-02' },
+  { label: 'YYYY-MM-DD HH:mm:ss (2006-01-02 15:04:05)', value: '2006-01-02 15:04:05' },
+  { label: 'YYYY/MM/DD (2006/01/02)', value: '2006/01/02' },
+  { label: 'YYYYMMDD (20060102)', value: '20060102' },
+  { label: 'MM-DD-YYYY (01-02-2006)', value: '01-02-2006' },
+  { label: 'DD-MM-YYYY (02-01-2006)', value: '02-01-2006' },
+  { label: 'HH:mm:ss (15:04:05)', value: '15:04:05' }
+]
 
 const loading = ref(false)
 const creating = ref(false)
@@ -741,6 +928,10 @@ const taskList = ref([])
 const dataSourceList = ref([])
 const tableList = ref([])
 const tableStructure = ref([])
+const csvColumns = ref([
+  { name: 'id', type: 'integer' },
+  { name: 'name', type: 'string' }
+])
 const jsonParseError = ref('')
 const fieldRules = reactive({})
 const fieldArrayLengths = reactive({})
@@ -858,6 +1049,9 @@ const parseJSONFields = (obj, prefix = '', depth = 0) => {
     return fields
   }
   
+  // 日期匹配模式
+  const datePattern = /^\d{4}-\d{2}-\d{2}(\s\d{2}:\d{2}(:\d{2})?)?$/
+
   for (const [key, value] of Object.entries(obj)) {
     const fieldPath = prefix ? `${prefix}.${key}` : key
     
@@ -877,9 +1071,13 @@ const parseJSONFields = (obj, prefix = '', depth = 0) => {
           fields.push(...arrayFields)
         } else {
           // 数组元素是基本类型
+          let type = typeof value[0]
+          if (type === 'string' && datePattern.test(value[0])) {
+            type = 'date'
+          }
           fields.push({
             name: arrayElementPath,
-            type: typeof value[0] === 'string' ? value[0] : typeof value[0],
+            type: type,
             originalType: typeof value[0]
           })
         }
@@ -896,15 +1094,29 @@ const parseJSONFields = (obj, prefix = '', depth = 0) => {
       fields.push(...nestedFields)
     } else {
       // 基本类型
+      let type = typeof value
+      if (type === 'string' && datePattern.test(value)) {
+        type = 'date'
+      }
       fields.push({
         name: fieldPath,
-        type: typeof value === 'string' ? value : typeof value,
+        type: type,
         originalType: typeof value
       })
     }
   }
   
   return fields
+}
+
+// 添加CSV列
+const addCsvColumn = () => {
+  csvColumns.value.push({ name: '', type: 'string' })
+}
+
+// 删除CSV列
+const removeCsvColumn = (index) => {
+  csvColumns.value.splice(index, 1)
 }
 
 // 获取字段列表（计算属性）
@@ -917,6 +1129,8 @@ const getFields = computed(() => {
   if (currentData.type === 'database') {
     console.log('数据库任务，返回表结构字段数:', tableStructure.value.length)
     return tableStructure.value
+  } else if (currentData.type === 'csv') {
+    return csvColumns.value
   } else {
     // JSON任务，从JSON结构中解析字段
     try {
@@ -1026,6 +1240,22 @@ const isDateField = (field) => {
   return false
 }
 
+// 获取日期选择器类型
+const getDatePickerType = (field) => {
+  if (!field || !field.type) return 'date'
+  const type = field.type.toLowerCase()
+  if (type.includes('time') || type.includes('datetime') || type.includes('timestamp')) {
+    return 'datetime'
+  }
+  return 'date'
+}
+
+// 获取日期值格式
+const getDateValueFormat = (field) => {
+  const type = getDatePickerType(field)
+  return type === 'datetime' ? 'YYYY-MM-DD HH:mm:ss' : 'YYYY-MM-DD'
+}
+
 // 规则类型变化处理
 const onRuleTypeChange = (fieldName) => {
   const ruleType = fieldRules[fieldName]
@@ -1092,6 +1322,10 @@ const resetForm = () => {
   }
   tableList.value = []
   tableStructure.value = []
+  csvColumns.value = [
+    { name: 'id', type: 'integer' },
+    { name: 'name', type: 'string' }
+  ]
   previewData.value = null
   Object.keys(fieldRules).forEach(key => {
     delete fieldRules[key]
@@ -1137,6 +1371,11 @@ const createTask = async () => {
       }
     })
     
+    // 如果是CSV任务，将列定义序列化为jsonSchema
+    if (formData.type === 'csv') {
+      formData.jsonSchema = JSON.stringify(csvColumns.value)
+    }
+
     const taskData = {
       ...formData,
       fieldRules: JSON.stringify(mergedFieldRules)
@@ -1260,6 +1499,8 @@ watch(() => formData.type, (newType) => {
     formData.outputType = 'database'
   } else if (newType === 'json') {
     formData.outputType = 'json'
+  } else if (newType === 'csv') {
+    formData.outputType = 'csv'
   }
 })
 
@@ -1336,6 +1577,11 @@ const generatePreviewData = async () => {
       fieldRules: JSON.stringify(mergedFieldRules)
     }
     
+    // 如果是CSV任务，将列定义序列化为jsonSchema
+    if (formData.type === 'csv') {
+      previewRequest.jsonSchema = JSON.stringify(csvColumns.value)
+    }
+    
     // 调用API生成预览数据
     const res = await taskApi.preview(previewRequest)
     previewData.value = res.data
@@ -1383,13 +1629,10 @@ const updateFieldRule = (fieldName, property, value) => {
 
 // 更新字段规则参数
 const updateFieldRuleParam = (fieldName, paramName, value) => {
-  if (!fieldRules[fieldName]) {
-    fieldRules[fieldName] = { type: 'random', parameters: {} }
+  if (!fieldRuleParams[fieldName]) {
+    fieldRuleParams[fieldName] = {}
   }
-  if (!fieldRules[fieldName].parameters) {
-    fieldRules[fieldName].parameters = {}
-  }
-  fieldRules[fieldName].parameters[paramName] = value
+  fieldRuleParams[fieldName][paramName] = value
 }
 
 // 关键词到正则表达式的映射
@@ -1477,6 +1720,10 @@ const getRegexSuggestions = (queryString, cb) => {
 
 // 处理正则表达式输入
 const handleRegexInput = (fieldName, value) => {
+  if (!value) {
+    updateFieldRuleParam(fieldName, 'pattern', value)
+    return
+  }
   // 检查是否是关键词
   const keyword = regexKeywords[value.toLowerCase()]
   if (keyword) {
@@ -1518,23 +1765,27 @@ const editTask = async (task) => {
         const rule = rules[fieldName]
         if (typeof rule === 'string') {
           // 兼容旧格式：字符串类型
-          fieldRules[fieldName] = {
-            type: rule,
-            parameters: {}
-          }
+          fieldRules[fieldName] = rule
           fieldRuleParams[fieldName] = {}
         } else if (rule && typeof rule === 'object') {
           // 新格式：对象类型
-          fieldRules[fieldName] = {
-            type: rule.type || 'random',
-            parameters: rule.parameters || {}
-          }
+          fieldRules[fieldName] = rule.type || 'random'
           // 同步更新UI参数
           fieldRuleParams[fieldName] = rule.parameters || {}
         }
       })
     } catch (error) {
       console.error('解析字段规则失败:', error)
+    }
+  }
+
+  // 如果是CSV任务，解析列定义
+  if (task.type === 'csv' && task.jsonSchema) {
+    try {
+      csvColumns.value = JSON.parse(task.jsonSchema)
+    } catch (error) {
+      console.error('解析CSV列定义失败:', error)
+      csvColumns.value = []
     }
   }
   
@@ -1581,6 +1832,11 @@ const updateTask = async () => {
       }
     })
     
+    // 如果是CSV任务，将列定义序列化为jsonSchema
+    if (editingTask.value.type === 'csv') {
+      editingTask.value.jsonSchema = JSON.stringify(csvColumns.value)
+    }
+
     const updateData = {
       ...editingTask.value,
       fieldRules: JSON.stringify(mergedFieldRules)
@@ -1649,10 +1905,26 @@ const applyTemplateToForm = async (template) => {
       showCreateDialog()
     }
     
-    // 解析模板的字段规则
-    const rules = JSON.parse(template.fieldRules || '{}')
+    // 1. 先设置任务类型和JSON结构，这可能会触发watcher清理规则
+    formData.type = template.type
+    if (template.jsonSchema) {
+      formData.jsonSchema = template.jsonSchema
+      
+      // 如果是CSV任务，解析列定义
+      if (template.type === 'csv') {
+        try {
+          csvColumns.value = JSON.parse(template.jsonSchema)
+        } catch (error) {
+          console.error('解析CSV列定义失败:', error)
+          csvColumns.value = []
+        }
+      }
+    }
     
-    // 清空当前规则
+    // 2. 等待DOM更新和watcher执行
+    await nextTick()
+    
+    // 3. 清空当前规则（确保万无一失）
     Object.keys(fieldRules).forEach(key => {
       delete fieldRules[key]
     })
@@ -1663,7 +1935,9 @@ const applyTemplateToForm = async (template) => {
       delete fieldArrayLengths[key]
     })
     
-    // 应用模板规则
+    // 4. 解析并应用模板规则
+    const rules = JSON.parse(template.fieldRules || '{}')
+    
     Object.keys(rules).forEach(fieldName => {
       const rule = rules[fieldName]
       if (typeof rule === 'string') {
@@ -1681,12 +1955,6 @@ const applyTemplateToForm = async (template) => {
         }
       }
     })
-    
-    // 设置任务类型和JSON结构
-    formData.type = template.type
-    if (template.jsonSchema) {
-      formData.jsonSchema = template.jsonSchema
-    }
     
     ElMessage.success(`模板"${template.name}"已应用到创建任务表单`)
     templateDialogVisible.value = false
@@ -2160,34 +2428,11 @@ onUnmounted(() => {
 .field-type {
   font-size: 12px;
   padding: 2px 6px;
-  border-radius: 3px;
-  color: #fff;
-  font-weight: 500;
-}
-
-.type-string {
-  background: #909399;
-}
-
-.type-number {
-  background: #f56c6c;
-}
-
-.type-array {
-  background: #67c23a;
-}
-
-.type-object {
-  background: #e6a23c;
-}
-
-.type-boolean {
-  background: #409eff;
-}
-
-.field-type {
-  font-size: 12px;
+  border-radius: 4px;
   color: #909399;
+  background-color: #f4f4f5;
+  font-weight: 500;
+  border: 1px solid #e9e9eb;
 }
 
 .field-rule-item .el-select {
