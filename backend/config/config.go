@@ -16,7 +16,7 @@ var AppConfig *Config
 
 func InitConfig() {
 	AppConfig = &Config{
-		Port:        getEnv("PORT", "8080"),
+		Port:        getEnv("PORT", "8070"),
 		DBPath:      getEnv("DB_PATH", "./data.db"),
 		UploadDir:   getEnv("UPLOAD_DIR", "./uploads"),
 		GenerateDir: getEnv("GENERATE_DIR", "./generate_files"),

@@ -82,6 +82,6 @@ func main() {
 		api.GET("/download/:filename", fileController.Download)
 	}
 
-	log.Println("服务器启动在端口 :8080")
-	r.Run(":8080")
+	log.Printf("服务器启动在端口 :%s", config.AppConfig.Port)
+	r.Run(":" + config.AppConfig.Port) // 使用配置中的端口
 }

@@ -164,7 +164,7 @@ const getStatusType = (status) => {
 // 获取状态文本
 const getStatusText = (status) => {
   const textMap = {
-    pending: '等待中',
+    pending: '待执行',
     running: '运行中',
     completed: '已完成',
     failed: '失败'
