@@ -159,11 +159,26 @@
             <el-radio-group v-model="formData.outputType">
               <el-radio label="database">插入数据库</el-radio>
               <el-radio label="sql">导出SQL文件</el-radio>
+              <el-radio label="mock_server">推送至Mock Server</el-radio>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="输出文件名" prop="outputPath" v-if="formData.outputType === 'sql'">
             <el-input v-model="formData.outputPath" placeholder="请输入SQL文件名，如：data.sql" class="form-item-full" />
           </el-form-item>
+          <template v-if="formData.outputType === 'mock_server'">
+            <el-form-item label="Mock Server URL" prop="mockServerUrl">
+              <el-input v-model="mockServerConfig.url" placeholder="例如: http://localhost:8089/api/import" class="form-item-full" />
+            </el-form-item>
+            <el-form-item label="Resource Type" prop="mockServerType">
+              <el-select v-model="mockServerConfig.type" placeholder="选择资源类型" class="form-item-full">
+                <el-option label="Users" value="users" />
+                <el-option label="Products" value="products" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="Auth Token" prop="mockServerToken">
+              <el-input v-model="mockServerConfig.token" placeholder="Bearer token (optional)" class="form-item-full" />
+            </el-form-item>
+          </template>
         </template>
         
         <!-- JSON任务配置 -->
@@ -189,11 +204,26 @@
             <el-radio-group v-model="formData.outputType">
               <el-radio label="json">JSON文件</el-radio>
               <el-radio label="txt">TXT文件（每行一个JSON）</el-radio>
+              <el-radio label="mock_server">推送至Mock Server</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="输出文件名" prop="outputPath">
+          <el-form-item label="输出文件名" prop="outputPath" v-if="formData.outputType !== 'mock_server'">
             <el-input v-model="formData.outputPath" :placeholder="formData.outputType === 'json' ? '请输入JSON文件名，如：data.json' : '请输入TXT文件名，如：data.txt'" class="form-item-full" />
           </el-form-item>
+          <template v-if="formData.outputType === 'mock_server'">
+            <el-form-item label="Mock Server URL" prop="mockServerUrl">
+              <el-input v-model="mockServerConfig.url" placeholder="例如: http://localhost:8089/api/import" class="form-item-full" />
+            </el-form-item>
+            <el-form-item label="Resource Type" prop="mockServerType">
+              <el-select v-model="mockServerConfig.type" placeholder="选择资源类型" class="form-item-full">
+                <el-option label="Users" value="users" />
+                <el-option label="Products" value="products" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="Auth Token" prop="mockServerToken">
+              <el-input v-model="mockServerConfig.token" placeholder="Bearer token (optional)" class="form-item-full" />
+            </el-form-item>
+          </template>
         </template>
         
         <!-- CSV任务配置 -->
@@ -222,9 +252,29 @@
               </el-button>
             </div>
           </el-form-item>
-          <el-form-item label="输出文件名" prop="outputPath">
+          <el-form-item label="输出类型" prop="outputType">
+            <el-radio-group v-model="formData.outputType">
+              <el-radio label="csv">CSV文件</el-radio>
+              <el-radio label="mock_server">推送至Mock Server</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="输出文件名" prop="outputPath" v-if="formData.outputType !== 'mock_server'">
             <el-input v-model="formData.outputPath" placeholder="请输入CSV文件名，如：data.csv" class="form-item-full" />
           </el-form-item>
+          <template v-if="formData.outputType === 'mock_server'">
+            <el-form-item label="Mock Server URL" prop="mockServerUrl">
+              <el-input v-model="mockServerConfig.url" placeholder="例如: http://localhost:8089/api/import" class="form-item-full" />
+            </el-form-item>
+            <el-form-item label="Resource Type" prop="mockServerType">
+              <el-select v-model="mockServerConfig.type" placeholder="选择资源类型" class="form-item-full">
+                <el-option label="Users" value="users" />
+                <el-option label="Products" value="products" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="Auth Token" prop="mockServerToken">
+              <el-input v-model="mockServerConfig.token" placeholder="Bearer token (optional)" class="form-item-full" />
+            </el-form-item>
+          </template>
         </template>
         
         <el-form-item label="生成数量" prop="count">
@@ -257,6 +307,7 @@
                     <el-option label="正则" value="regex" />
                     <el-option label="枚举" value="enum" />
                     <el-option label="UUID" value="uuid" />
+                    <el-option label="数据库反查" value="db_lookup" />
                     <el-option label="自定义" value="custom" />
                   </el-select>
                   <!-- 数组长度配置 -->
@@ -589,16 +640,36 @@
             <template v-if="editingTask.type === 'database'">
               <el-radio value="database">插入数据库</el-radio>
               <el-radio value="sql">导出SQL文件</el-radio>
+              <el-radio value="mock_server">推送至Mock Server</el-radio>
             </template>
             <template v-else-if="editingTask.type === 'json'">
               <el-radio value="json">JSON文件</el-radio>
               <el-radio value="txt">TXT文件（每行一个JSON）</el-radio>
+              <el-radio value="mock_server">推送至Mock Server</el-radio>
             </template>
             <template v-else-if="editingTask.type === 'csv'">
               <el-radio value="csv">CSV文件</el-radio>
+              <el-radio value="mock_server">推送至Mock Server</el-radio>
             </template>
           </el-radio-group>
         </el-form-item>
+
+        <!-- Mock Server 配置 (编辑模式) -->
+        
+        <template v-if="editingTask.outputType === 'mock_server'">
+          <el-form-item label="Mock Server URL">
+            <el-input v-model="mockServerConfig.url" placeholder="例如: http://localhost:8089/api/import" />
+          </el-form-item>
+          <el-form-item label="Resource Type">
+            <el-select v-model="mockServerConfig.type" placeholder="选择资源类型" style="width: 100%">
+              <el-option label="Users" value="users" />
+              <el-option label="Products" value="products" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="Auth Token">
+            <el-input v-model="mockServerConfig.token" placeholder="Bearer token (optional)" />
+          </el-form-item>
+        </template>
         
         <el-form-item label="输出文件名" prop="outputPath" v-if="editingTask.outputType === 'sql' || editingTask.outputType === 'json' || editingTask.outputType === 'txt' || editingTask.outputType === 'csv'">
           <el-input v-model="editingTask.outputPath" :placeholder="editingTask.outputType === 'sql' ? '请输入SQL文件名，如：data.sql' : editingTask.outputType === 'json' ? '请输入JSON文件名，如：data.json' : '请输入TXT文件名，如：data.txt'" />
@@ -630,7 +701,7 @@
               
               <div class="rule-config">
                 <el-select 
-                  :model-value="fieldRules[field.name]?.type" 
+                  :model-value="fieldRules[field.name]" 
                   placeholder="选择规则类型"
                   style="width: 200px; margin-right: 10px"
                   @change="(value) => updateFieldRule(field.name, 'type', value)"
@@ -641,38 +712,40 @@
                   <el-option label="日期序列" value="date_sequence" v-if="isDateField(field)" />
                   <el-option label="正则表达式" value="regex" />
                   <el-option label="枚举" value="enum" />
+                  <el-option label="UUID" value="uuid" />
                   <el-option label="引用" value="reference" />
+                  <el-option label="数据库反查" value="db_lookup" />
                   <el-option label="自定义" value="custom" />
                 </el-select>
                 
                 <!-- 根据规则类型显示不同的参数配置 -->
-                <template v-if="fieldRules[field.name]?.type === 'fixed'">
+                <template v-if="fieldRules[field.name] === 'fixed'">
                   <el-input 
-                    :model-value="fieldRules[field.name]?.parameters?.value" 
+                    :model-value="fieldRuleParams[field.name]?.value" 
                     placeholder="固定值"
                     style="width: 200px"
                     @input="(value) => updateFieldRuleParam(field.name, 'value', value)"
                   />
                 </template>
                 
-                <template v-else-if="fieldRules[field.name]?.type === 'sequence'">
+                <template v-else-if="fieldRules[field.name] === 'sequence'">
                   <el-input 
-                    :model-value="fieldRules[field.name]?.parameters?.start" 
+                    :model-value="fieldRuleParams[field.name]?.start" 
                     placeholder="起始值（支持大整数）"
                     style="width: 150px; margin-right: 10px"
                     @input="(value) => updateFieldRuleParam(field.name, 'start', value)"
                   />
                   <el-input 
-                    :model-value="fieldRules[field.name]?.parameters?.step" 
+                    :model-value="fieldRuleParams[field.name]?.step" 
                     placeholder="步长"
                     style="width: 100px"
                     @input="(value) => updateFieldRuleParam(field.name, 'step', value)"
                   />
                 </template>
                 
-                <template v-else-if="fieldRules[field.name]?.type === 'random' && isDateField(field)">
+                <template v-else-if="fieldRules[field.name] === 'random' && isDateField(field)">
                   <el-date-picker 
-                    :model-value="fieldRules[field.name]?.parameters?.start" 
+                    :model-value="fieldRuleParams[field.name]?.start" 
                     :type="getDatePickerType(field)"
                     placeholder="开始日期"
                     :value-format="getDateValueFormat(field)"
@@ -681,7 +754,7 @@
                     @update:model-value="(value) => updateFieldRuleParam(field.name, 'start', value)"
                   />
                   <el-date-picker 
-                    :model-value="fieldRules[field.name]?.parameters?.end" 
+                    :model-value="fieldRuleParams[field.name]?.end" 
                     :type="getDatePickerType(field)"
                     placeholder="结束日期"
                     :value-format="getDateValueFormat(field)"
@@ -690,7 +763,7 @@
                     @update:model-value="(value) => updateFieldRuleParam(field.name, 'end', value)"
                   />
                   <el-select 
-                    :model-value="fieldRules[field.name]?.parameters?.format" 
+                    :model-value="fieldRuleParams[field.name]?.format" 
                     placeholder="日期格式 (可选)"
                     size="small"
                     class="param-input-small"
@@ -707,9 +780,9 @@
                   </el-select>
                 </template>
                 
-                <template v-else-if="fieldRules[field.name]?.type === 'date_sequence'">
+                <template v-else-if="fieldRules[field.name] === 'date_sequence'">
                   <el-date-picker 
-                    :model-value="fieldRules[field.name]?.parameters?.start" 
+                    :model-value="fieldRuleParams[field.name]?.start" 
                     :type="getDatePickerType(field)"
                     placeholder="起始日期"
                     :value-format="getDateValueFormat(field)"
@@ -718,7 +791,7 @@
                     @update:model-value="(value) => updateFieldRuleParam(field.name, 'start', value)"
                   />
                   <el-input 
-                    :model-value="fieldRules[field.name]?.parameters?.step" 
+                    :model-value="fieldRuleParams[field.name]?.step" 
                     placeholder="步长（天数）"
                     size="small"
                     class="param-input-small"
@@ -730,7 +803,7 @@
                     effect="dark"
                   >
                     <el-select 
-                      :model-value="fieldRules[field.name]?.parameters?.format" 
+                      :model-value="fieldRuleParams[field.name]?.format" 
                       placeholder="日期格式 (如: 2006-01-02, 可选)"
                       size="small"
                       class="param-input-small"
@@ -748,9 +821,9 @@
                   </el-tooltip>
                 </template>
                 
-                <template v-else-if="fieldRules[field.name]?.type === 'regex'">
+                <template v-else-if="fieldRules[field.name] === 'regex'">
                   <el-autocomplete
-                    :model-value="fieldRules[field.name]?.parameters?.pattern" 
+                    :model-value="fieldRuleParams[field.name]?.pattern" 
                     placeholder="输入关键词或正则表达式 (如: mail, phone, name)"
                     style="width: 300px"
                     :fetch-suggestions="getRegexSuggestions"
@@ -768,25 +841,93 @@
                   </el-autocomplete>
                 </template>
                 
-                <template v-else-if="fieldRules[field.name]?.type === 'enum'">
+                <template v-else-if="fieldRules[field.name] === 'enum'">
                   <el-input 
-                    :model-value="fieldRules[field.name]?.parameters?.values" 
+                    :model-value="fieldRuleParams[field.name]?.values" 
                     placeholder="枚举值，用逗号分隔"
                     style="width: 200px"
                     @input="(value) => updateFieldRuleParam(field.name, 'values', value)"
                   />
                 </template>
                 
-                <template v-else-if="fieldRules[field.name]?.type === 'reference'">
+                <template v-else-if="fieldRules[field.name] === 'reference'">
                   <el-input 
-                    :model-value="fieldRules[field.name]?.parameters?.field" 
+                    :model-value="fieldRuleParams[field.name]?.field" 
                     placeholder="引用字段名"
                     style="width: 200px"
                     @input="(value) => updateFieldRuleParam(field.name, 'field', value)"
                   />
                 </template>
 
-                <template v-else-if="fieldRules[field.name]?.type === 'custom'">
+                <template v-else-if="fieldRules[field.name] === 'db_lookup'">
+                    <el-select
+                        v-model="fieldRuleParams[field.name].dataSourceId"
+                        placeholder="数据源(默认当前)"
+                        style="width: 140px; margin-right: 10px"
+                        clearable
+                        @change="(val) => {
+                            updateFieldRuleParam(field.name, 'dataSourceId', val);
+                            updateFieldRuleParam(field.name, 'tableName', '');
+                            updateFieldRuleParam(field.name, 'columnName', '');
+                            if(val) loadRuleTables(val);
+                        }"
+                    >
+                        <el-option
+                            v-for="item in dataSourceList"
+                            :key="item.id"
+                            :label="item.name"
+                            :value="item.id"
+                        />
+                    </el-select>
+                    <el-select
+                        v-model="fieldRuleParams[field.name].tableName"
+                        placeholder="表名"
+                        style="width: 140px; margin-right: 10px"
+                        filterable
+                        @change="(val) => {
+                             updateFieldRuleParam(field.name, 'tableName', val);
+                             updateFieldRuleParam(field.name, 'columnName', '');
+                             const dsId = fieldRuleParams[field.name].dataSourceId || editingTask.dataSourceId;
+                             if(dsId) loadRuleColumns(dsId, val);
+                        }"
+                        @visible-change="(visible) => {
+                            if(visible) {
+                                 const dsId = fieldRuleParams[field.name].dataSourceId || editingTask.dataSourceId;
+                                 if(dsId) loadRuleTables(dsId);
+                            }
+                        }"
+                    >
+                        <el-option
+                            v-for="tbl in (ruleTableOptions[fieldRuleParams[field.name].dataSourceId || editingTask.dataSourceId] || [])"
+                            :key="tbl"
+                            :label="tbl"
+                            :value="tbl"
+                        />
+                    </el-select>
+                    <el-select
+                        v-model="fieldRuleParams[field.name].columnName"
+                        placeholder="列名"
+                        style="width: 140px"
+                        filterable
+                        @change="(val) => updateFieldRuleParam(field.name, 'columnName', val)"
+                        @visible-change="(visible) => {
+                             if(visible) {
+                                 const dsId = fieldRuleParams[field.name].dataSourceId || editingTask.dataSourceId;
+                                 const tbl = fieldRuleParams[field.name].tableName;
+                                 if(dsId && tbl) loadRuleColumns(dsId, tbl);
+                             }
+                        }"
+                    >
+                        <el-option
+                             v-for="col in (ruleColumnOptions[`${fieldRuleParams[field.name].dataSourceId || editingTask.dataSourceId}_${fieldRuleParams[field.name].tableName}`] || [])"
+                             :key="col"
+                             :label="col"
+                             :value="col"
+                        />
+                    </el-select>
+                </template>
+
+                <template v-else-if="fieldRules[field.name] === 'custom'">
                   <div class="custom-script-editor" style="width: 100%; margin-top: 10px;">
                     <div style="display: flex; align-items: center; margin-bottom: 5px;">
                       <el-tooltip
@@ -801,7 +942,7 @@
                       </el-tooltip>
                     </div>
                     <vue-monaco-editor
-                        :value="fieldRules[field.name]?.parameters?.script"
+                        :value="fieldRuleParams[field.name]?.script"
                         @update:value="(value) => updateFieldRuleParam(field.name, 'script', value)"
                         theme="vs"
                         language="javascript"
@@ -823,6 +964,7 @@
                   </div>
                 </template>
                 
+
                 <!-- 数组长度配置 -->
                 <template v-if="field.name.includes('[]')">
                   <el-input-number 
@@ -917,6 +1059,7 @@ const loading = ref(false)
 const creating = ref(false)
 const updating = ref(false)
 const generatingPreview = ref(false)
+const isApplyingTemplate = ref(false)
 const dialogVisible = ref(false)
 const editDialogVisible = ref(false)
 const templateDialogVisible = ref(false)
@@ -936,6 +1079,8 @@ const jsonParseError = ref('')
 const fieldRules = reactive({})
 const fieldArrayLengths = reactive({})
 const fieldRuleParams = reactive({})
+const ruleTableOptions = reactive({})
+const ruleColumnOptions = reactive({})
 const formRef = ref()
 
 const pagination = reactive({
@@ -953,6 +1098,12 @@ const formData = reactive({
   outputPath: '',
   jsonSchema: '',
   count: 1000
+})
+
+const mockServerConfig = reactive({
+  url: 'http://localhost:8089/api/import',
+  type: 'users',
+  token: ''
 })
 
 const formRules = {
@@ -1004,6 +1155,32 @@ const loadTables = async () => {
     tableList.value = res.data || []
   } catch (error) {
     console.error('加载表列表失败:', error)
+  }
+}
+
+// 加载规则关联的表列表
+const loadRuleTables = async (dataSourceId) => {
+  if (!dataSourceId) return
+  try {
+    const res = await datasourceApi.getTables(dataSourceId)
+    ruleTableOptions[dataSourceId] = res.data || []
+  } catch (error) {
+    console.error('加载规则表列表失败:', error)
+  }
+}
+
+// 加载规则关联的表结构
+const loadRuleColumns = async (dataSourceId, tableName) => {
+  if (!dataSourceId || !tableName) return
+  const key = `${dataSourceId}_${tableName}`
+  if (ruleColumnOptions[key]) return
+
+  try {
+    const res = await datasourceApi.getTableStructure(dataSourceId, tableName)
+    const columns = res.data?.columns || []
+    ruleColumnOptions[key] = columns.map(col => col.name)
+  } catch (error) {
+    console.error('加载规则表结构失败:', error)
   }
 }
 
@@ -1258,7 +1435,8 @@ const getDateValueFormat = (field) => {
 
 // 规则类型变化处理
 const onRuleTypeChange = (fieldName) => {
-  const ruleType = fieldRules[fieldName]
+  const rule = fieldRules[fieldName]
+  const ruleType = (rule && typeof rule === 'object') ? rule.type : rule
   
   // 初始化规则参数
   if (!fieldRuleParams[fieldName]) {
@@ -1272,6 +1450,9 @@ const onRuleTypeChange = (fieldName) => {
       break
     case 'sequence':
       fieldRuleParams[fieldName] = { start: 1, step: 1 }
+      break
+    case 'db_lookup':
+      fieldRuleParams[fieldName] = { dataSourceId: null, tableName: '', columnName: '' }
       break
     case 'date_sequence':
       fieldRuleParams[fieldName] = { start: '', step: 1, format: '' }
@@ -1336,6 +1517,11 @@ const resetForm = () => {
   Object.keys(fieldRuleParams).forEach(key => {
     delete fieldRuleParams[key]
   })
+  
+  // 重置 Mock Server 配置
+  mockServerConfig.url = 'http://localhost:8089/api/import'
+  mockServerConfig.type = 'users'
+  mockServerConfig.token = ''
 }
 
 // 创建任务
@@ -1345,6 +1531,13 @@ const createTask = async () => {
   try {
     await formRef.value.validate()
     creating.value = true
+
+    // 如果是 mock_server 类型，构造 configuration
+    if (formData.outputType === 'mock_server') {
+      formData.configuration = JSON.stringify(mockServerConfig)
+      // 兼容性考虑，OutputPath 也存一下 URL
+      formData.outputPath = mockServerConfig.url
+    }
     
     // 合并字段规则、规则参数和数组长度配置
     const mergedFieldRules = {}
@@ -1355,6 +1548,16 @@ const createTask = async () => {
       const ruleType = typeof rule === 'string' ? rule : (rule?.type || 'random')
       const ruleParams = typeof rule === 'object' && rule?.parameters ? rule.parameters : (fieldRuleParams[fieldName] || {})
       
+      // 对于 db_lookup 规则，确保参数结构正确
+      if (ruleType === 'db_lookup') {
+        // 如果是从 fieldRuleParams 获取的，直接使用
+        // 如果是从 rule.parameters 获取的，也直接使用
+        // 确保必要的参数存在
+        if (!ruleParams.tableName || !ruleParams.columnName) {
+           console.warn(`Field ${fieldName} has incomplete db_lookup params`)
+        }
+      }
+
       mergedFieldRules[fieldName] = {
         type: ruleType,
         parameters: { ...ruleParams }
@@ -1506,6 +1709,11 @@ watch(() => formData.type, (newType) => {
 
 // 监听JSON结构变化
 watch(() => formData.jsonSchema, (newValue, oldValue) => {
+  // 如果正在应用模板，不清理规则
+  if (isApplyingTemplate.value) {
+    return
+  }
+
   // 只有当JSON结构真正改变且不为空时才清理
   if (newValue && newValue !== oldValue && newValue.trim() !== '') {
     console.log('JSON结构发生变化，清理字段规则数据')
@@ -1615,15 +1823,43 @@ const copyPreviewData = async () => {
 
 // 更新字段规则
 const updateFieldRule = (fieldName, property, value) => {
+  // 确保 fieldRules[fieldName] 存在
   if (!fieldRules[fieldName]) {
-    fieldRules[fieldName] = { type: 'random', parameters: {} }
+     // 默认为 random
+     fieldRules[fieldName] = 'random'
   }
+
   if (property === 'type') {
-    fieldRules[fieldName].type = value
-    // 重置参数
-    fieldRules[fieldName].parameters = {}
+    // 直接更新类型字符串
+    fieldRules[fieldName] = value
+    
+    // 初始化参数
+    if (!fieldRuleParams[fieldName]) {
+        fieldRuleParams[fieldName] = {}
+    }
+    
+    // 根据新类型设置默认参数
+    switch (value) {
+        case 'fixed':
+            fieldRuleParams[fieldName] = { value: '' }
+            break
+        case 'sequence':
+            fieldRuleParams[fieldName] = { start: 1, step: 1 }
+            break
+        case 'db_lookup':
+            fieldRuleParams[fieldName] = { tableName: '', columnName: '' }
+            break
+        case 'date_sequence':
+             fieldRuleParams[fieldName] = { start: '', step: 1, format: '' }
+             break
+        default:
+             fieldRuleParams[fieldName] = {}
+    }
   } else {
-    fieldRules[fieldName][property] = value
+    // 这是一个后备逻辑，如果 fieldRules[fieldName] 是对象（旧逻辑兼容）
+    if (typeof fieldRules[fieldName] === 'object') {
+        fieldRules[fieldName][property] = value
+    }
   }
 }
 
@@ -1756,6 +1992,18 @@ const editTask = async (task) => {
     delete fieldRuleParams[key]
   })
   
+  // 如果是 Mock Server 任务，加载 Mock Server 配置
+  if (task.outputType === 'mock_server' && task.configuration) {
+    try {
+      const config = JSON.parse(task.configuration)
+      mockServerConfig.url = config.url || ''
+      mockServerConfig.type = config.type || 'users'
+      mockServerConfig.token = config.token || ''
+    } catch (e) {
+      console.error('解析Mock Server配置失败', e)
+    }
+  }
+
   // 解析字段规则
   if (task.fieldRules) {
     try {
@@ -1841,6 +2089,19 @@ const updateTask = async () => {
       ...editingTask.value,
       fieldRules: JSON.stringify(mergedFieldRules)
     }
+
+    // 如果是 mock_server 类型，构造 configuration
+    if (editingTask.value.outputType === 'mock_server') {
+       // Mock Server 配置目前不支持在编辑时修改，除非我们把 mockServerConfig 绑定到 editingTask
+       // 这是一个简化处理，如果需要支持编辑 Mock Server 配置，需要在 editTask 中反序列化 configuration
+       // 这里暂时假设 configuration 已经存在或者不需要更新 Mock 配置
+       if (mockServerConfig.url) {
+          editingTask.value.configuration = JSON.stringify(mockServerConfig)
+          editingTask.value.outputPath = mockServerConfig.url
+          updateData.configuration = editingTask.value.configuration
+          updateData.outputPath = editingTask.value.outputPath
+       }
+    }
     
     await taskApi.update(editingTask.value.id, updateData)
     ElMessage.success('任务更新成功')
@@ -1899,6 +2160,7 @@ const loadTemplates = async () => {
 
 // 应用模板到创建任务表单（在创建任务对话框中使用）
 const applyTemplateToForm = async (template) => {
+  isApplyingTemplate.value = true
   try {
     // 如果创建任务对话框未打开，先打开它
     if (!dialogVisible.value) {
@@ -1961,6 +2223,11 @@ const applyTemplateToForm = async (template) => {
   } catch (error) {
     console.error('应用模板失败:', error)
     ElMessage.error('应用模板失败')
+  } finally {
+    // 确保watcher执行完毕后再重置标志
+    setTimeout(() => {
+      isApplyingTemplate.value = false
+    }, 100)
   }
 }
 

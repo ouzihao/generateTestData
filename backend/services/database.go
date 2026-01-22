@@ -19,22 +19,26 @@ func NewDatabaseService() *DatabaseService {
 
 // 打开数据库连接
 func (s *DatabaseService) openConnection(ds *models.DataSource) (*sql.DB, error) {
+	var driverName string
 	var dsn string
 
 	switch strings.ToLower(ds.Type) {
 	case "mysql":
+		driverName = "mysql"
 		dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 			ds.Username, ds.Password, ds.Host, ds.Port, ds.Database)
 	case "postgresql":
+		driverName = "postgres"
 		dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 			ds.Host, ds.Port, ds.Username, ds.Password, ds.Database)
 	case "sqlite":
+		driverName = "sqlite3"
 		dsn = ds.Database
 	default:
 		return nil, fmt.Errorf("不支持的数据库类型: %s", ds.Type)
 	}
 
-	return sql.Open(ds.Type, dsn)
+	return sql.Open(driverName, dsn)
 }
 
 // 测试数据库连接
@@ -84,6 +88,47 @@ func (s *DatabaseService) GetTables(ds *models.DataSource) ([]string, error) {
 	}
 
 	return tables, nil
+}
+
+// GetRandomRecords 获取指定表字段的随机记录
+func (s *DatabaseService) GetRandomRecords(ds *models.DataSource, tableName string, columnName string, limit int) ([]interface{}, error) {
+	db, err := s.openConnection(ds)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	var orderBy string
+	switch strings.ToLower(ds.Type) {
+	case "mysql":
+		orderBy = "RAND()"
+	case "postgresql", "sqlite":
+		orderBy = "RANDOM()"
+	default:
+		orderBy = "RAND()"
+	}
+
+	query := fmt.Sprintf("SELECT %s FROM %s ORDER BY %s LIMIT %d", columnName, tableName, orderBy, limit)
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var values []interface{}
+	for rows.Next() {
+		var val interface{}
+		if err := rows.Scan(&val); err != nil {
+			return nil, err
+		}
+		// Handle bytes for strings in some drivers
+		if b, ok := val.([]byte); ok {
+			values = append(values, string(b))
+		} else {
+			values = append(values, val)
+		}
+	}
+	return values, nil
 }
 
 // 获取表结构

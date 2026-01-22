@@ -33,11 +33,12 @@ const (
 type OutputType string
 
 const (
-	OutputTypeDatabase OutputType = "database"
-	OutputTypeSQL      OutputType = "sql"
-	OutputTypeJSON     OutputType = "json"
-	OutputTypeTXT      OutputType = "txt"
-	OutputTypeCSV      OutputType = "csv"
+	OutputTypeDatabase   OutputType = "database"
+	OutputTypeSQL        OutputType = "sql"
+	OutputTypeJSON       OutputType = "json"
+	OutputTypeTXT        OutputType = "txt"
+	OutputTypeCSV        OutputType = "csv"
+	OutputTypeMockServer OutputType = "mock_server"
 )
 
 // 数据源配置
@@ -63,24 +64,25 @@ type FieldRule struct {
 
 // 任务配置
 type Task struct {
-	ID           uint        `json:"id" gorm:"primaryKey"`
-	Name         string      `json:"name" gorm:"not null"`
-	Type         TaskType    `json:"type" gorm:"not null"`
-	DataSourceID *uint       `json:"dataSourceId"` // 数据库任务使用
-	DataSource   *DataSource `json:"data_source" gorm:"foreignKey:DataSourceID"`
-	TableName    string      `json:"tableName"`  // 数据库任务使用
-	JSONSchema   string      `json:"jsonSchema"` // JSON任务使用，存储JSON结构定义
-	FieldRules   string      `json:"fieldRules"` // 存储字段规则的JSON字符串
-	Count        int64       `json:"count"`      // 生成数据数量
-	OutputType   OutputType  `json:"outputType"`
-	OutputPath   string      `json:"outputPath"`    // 输出文件名（不含路径，会自动保存到配置的生成目录）
-	UniqueFields string      `json:"unique_fields"` // 不允许重复的字段，JSON数组格式
-	Status       TaskStatus  `json:"status" gorm:"default:pending"`
-	Progress     float64     `json:"progress" gorm:"default:0"`
-	ErrorMsg     string      `json:"error_msg"`
-	CreatedAt    time.Time   `json:"created_at"`
-	UpdatedAt    time.Time   `json:"updated_at"`
-	CompletedAt  *time.Time  `json:"completed_at"`
+	ID            uint        `json:"id" gorm:"primaryKey"`
+	Name          string      `json:"name" gorm:"not null"`
+	Type          TaskType    `json:"type" gorm:"not null"`
+	DataSourceID  *uint       `json:"dataSourceId"` // 数据库任务使用
+	DataSource    *DataSource `json:"data_source" gorm:"foreignKey:DataSourceID"`
+	TableName     string      `json:"tableName"`  // 数据库任务使用
+	JSONSchema    string      `json:"jsonSchema"` // JSON任务使用，存储JSON结构定义
+	FieldRules    string      `json:"fieldRules"` // 存储字段规则的JSON字符串
+	Count         int64       `json:"count"`      // 生成数据数量
+	OutputType    OutputType  `json:"outputType"`
+	OutputPath    string      `json:"outputPath"`    // 输出文件名（不含路径，会自动保存到配置的生成目录）
+	Configuration string      `json:"configuration"` // 额外配置，JSON格式 (如Mock Server地址等)
+	UniqueFields  string      `json:"unique_fields"` // 不允许重复的字段，JSON数组格式
+	Status        TaskStatus  `json:"status" gorm:"default:pending"`
+	Progress      float64     `json:"progress" gorm:"default:0"`
+	ErrorMsg      string      `json:"error_msg"`
+	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
+	CompletedAt   *time.Time  `json:"completed_at"`
 }
 
 // 表结构信息

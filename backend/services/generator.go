@@ -17,12 +17,16 @@ import (
 type GeneratorService struct {
 	uniqueValues     map[string]map[interface{}]bool // 用于存储唯一值
 	sequenceCounters map[string]*big.Int             // 序列计数器，支持大整数
+	dbService        *DatabaseService
+	lookupCache      map[string][]interface{}
 }
 
-func NewGeneratorService() *GeneratorService {
+func NewGeneratorService(dbService *DatabaseService) *GeneratorService {
 	return &GeneratorService{
 		uniqueValues:     make(map[string]map[interface{}]bool),
 		sequenceCounters: make(map[string]*big.Int),
+		dbService:        dbService,
+		lookupCache:      make(map[string][]interface{}),
 	}
 }
 
@@ -96,6 +100,8 @@ func (g *GeneratorService) generateValue(fieldName, fieldType string, rule model
 		value = g.generateUUID()
 	case "custom":
 		value, err = g.generateCustom(rule, context)
+	case "db_lookup":
+		value, err = g.generateDBLookup(rule, context)
 	default:
 		// 为默认情况也添加字段名信息
 		if rule.Parameters == nil {
@@ -566,6 +572,80 @@ func (g *GeneratorService) generateRandomDate() time.Time {
 	delta := max - min
 	sec := rand.Int63n(delta) + min
 	return time.Unix(sec, 0)
+}
+
+// 数据库反查
+func (g *GeneratorService) generateDBLookup(rule models.FieldRule, context map[string]interface{}) (interface{}, error) {
+	if g.dbService == nil {
+		return nil, fmt.Errorf("database service not initialized")
+	}
+
+	tableName, ok := rule.Parameters["tableName"].(string)
+	if !ok || tableName == "" {
+		return nil, fmt.Errorf("db_lookup requires tableName parameter")
+	}
+	columnName, ok := rule.Parameters["columnName"].(string)
+	if !ok || columnName == "" {
+		return nil, fmt.Errorf("db_lookup requires columnName parameter")
+	}
+
+	// 尝试从规则参数获取 dataSourceId
+	var ds *models.DataSource
+	if dsIDParam, ok := rule.Parameters["dataSourceId"]; ok {
+		var dsID uint
+		switch v := dsIDParam.(type) {
+		case float64:
+			dsID = uint(v)
+		case int:
+			dsID = uint(v)
+		case string:
+			// 尝试解析字符串
+			if id, err := strconv.ParseUint(v, 10, 64); err == nil {
+				dsID = uint(id)
+			}
+		}
+
+		if dsID > 0 {
+			var dataSource models.DataSource
+			if err := models.DB.First(&dataSource, dsID).Error; err == nil {
+				ds = &dataSource
+			}
+		}
+	}
+
+	// 如果规则中没有指定或找不到，尝试从 context 获取 DataSource
+	if ds == nil {
+		if val, ok := context["dataSource"]; ok && val != nil {
+			ds, _ = val.(*models.DataSource)
+		}
+	}
+
+	if ds == nil {
+		return nil, fmt.Errorf("dataSource not found in rule parameters or context")
+	}
+
+	// 缓存 Key
+	cacheKey := fmt.Sprintf("%d:%s:%s", ds.ID, tableName, columnName)
+
+	// 检查缓存
+	if values, ok := g.lookupCache[cacheKey]; ok && len(values) > 0 {
+		return values[rand.Intn(len(values))], nil
+	}
+
+	// 缓存未命中，从数据库拉取
+	values, err := g.dbService.GetRandomRecords(ds, tableName, columnName, 1000)
+	if err != nil {
+		return nil, fmt.Errorf("db lookup failed: %v", err)
+	}
+
+	if len(values) == 0 {
+		return nil, fmt.Errorf("no records found in %s.%s", tableName, columnName)
+	}
+
+	// 更新缓存
+	g.lookupCache[cacheKey] = values
+
+	return values[rand.Intn(len(values))], nil
 }
 
 // 生成日期范围内的随机日期

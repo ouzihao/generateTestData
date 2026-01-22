@@ -1,10 +1,13 @@
 package services
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"generateTestData/backend/models"
+	"io"
 	"math"
+	"net/http"
 	"time"
 )
 
@@ -145,7 +148,7 @@ func (s *TaskService) executeDatabaseTask(task *models.Task) error {
 	}
 
 	// 为每个任务创建独立的生成器实例，避免并发冲突
-	generatorService := NewGeneratorService()
+	generatorService := NewGeneratorService(s.dbService)
 
 	// 分批生成数据
 	batchSize := int64(10000) // 每批1万条
@@ -162,7 +165,8 @@ func (s *TaskService) executeDatabaseTask(task *models.Task) error {
 		for i := int64(0); i < currentBatch; i++ {
 			// 构造上下文
 			context := map[string]interface{}{
-				"rowIndex": generated + i,
+				"rowIndex":   generated + i,
+				"dataSource": task.DataSource,
 			}
 
 			record, err := generatorService.GenerateRecord(tableInfo, rules, uniqueFields, context)
@@ -178,6 +182,8 @@ func (s *TaskService) executeDatabaseTask(task *models.Task) error {
 			err = s.exportService.InsertToDatabase(task.DataSource, task.TableName, records)
 		case models.OutputTypeSQL:
 			err = s.exportService.ExportToSQL(task.OutputPath, task.TableName, records, generated == 0)
+		case models.OutputTypeMockServer:
+			err = s.pushToMockServer(task, records)
 		default:
 			return fmt.Errorf("不支持的输出类型: %s", task.OutputType)
 		}
@@ -215,7 +221,7 @@ func (s *TaskService) executeJSONTask(task *models.Task) error {
 	}
 
 	// 为每个任务创建独立的生成器实例，避免并发冲突
-	generatorService := NewGeneratorService()
+	generatorService := NewGeneratorService(s.dbService)
 
 	// 分批生成数据
 	batchSize := int64(1000) // JSON数据每批1000条
@@ -232,7 +238,8 @@ func (s *TaskService) executeJSONTask(task *models.Task) error {
 		for i := int64(0); i < currentBatch; i++ {
 			// 构造上下文
 			context := map[string]interface{}{
-				"rowIndex": generated + i,
+				"rowIndex":   generated + i,
+				"dataSource": task.DataSource,
 			}
 
 			jsonObj, err := generatorService.GenerateJSON(schema, rules, uniqueFields, context)
@@ -254,6 +261,11 @@ func (s *TaskService) executeJSONTask(task *models.Task) error {
 			if err != nil {
 				return fmt.Errorf("导出TXT失败: %v", err)
 			}
+		case models.OutputTypeMockServer:
+			err = s.pushToMockServer(task, jsonObjects)
+			if err != nil {
+				return fmt.Errorf("推送至Mock Server失败: %v", err)
+			}
 		default:
 			return fmt.Errorf("不支持的输出类型: %s", task.OutputType)
 		}
@@ -261,6 +273,70 @@ func (s *TaskService) executeJSONTask(task *models.Task) error {
 		generated += currentBatch
 		progress := math.Round(float64(generated) / float64(task.Count) * 100)
 		s.updateTaskProgress(task.ID, progress)
+	}
+
+	return nil
+}
+
+// 推送数据到 Mock Server
+func (s *TaskService) pushToMockServer(task *models.Task, data []map[string]interface{}) error {
+	var config struct {
+		URL   string `json:"url"`
+		Token string `json:"token"`
+		Type  string `json:"type"`
+	}
+	// 如果 Configuration 为空，尝试使用默认配置或报错
+	if task.Configuration != "" {
+		if err := json.Unmarshal([]byte(task.Configuration), &config); err != nil {
+			return fmt.Errorf("解析Mock Server配置失败: %v", err)
+		}
+	}
+
+	if config.URL == "" {
+		// 尝试从 OutputPath 获取 URL (兼容性考虑)
+		if task.OutputPath != "" && (task.OutputPath[:7] == "http://" || task.OutputPath[:8] == "https://") {
+			config.URL = task.OutputPath
+		} else {
+			return fmt.Errorf("Mock Server URL不能为空")
+		}
+	}
+
+	// 构造请求体
+	payload := map[string]interface{}{
+		"type": config.Type,
+		"data": data,
+	}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", config.URL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if config.Token != "" {
+		// 自动添加 Bearer 前缀（如果用户未提供）
+		token := config.Token
+		if len(token) < 7 || (token[:7] != "Bearer " && token[:7] != "bearer ") {
+			token = "Bearer " + token
+		}
+		req.Header.Set("Authorization", token)
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Mock Server返回错误 (%d): %s", resp.StatusCode, string(body))
 	}
 
 	return nil
@@ -288,14 +364,14 @@ func (s *TaskService) validateTask(task *models.Task) error {
 		if task.JSONSchema == "" {
 			return fmt.Errorf("JSON任务必须指定JSON结构")
 		}
-		if task.OutputPath == "" {
+		if task.OutputPath == "" && task.OutputType != models.OutputTypeMockServer {
 			return fmt.Errorf("JSON任务必须指定输出路径")
 		}
 	case models.TaskTypeCSV:
 		if task.JSONSchema == "" {
 			return fmt.Errorf("CSV任务必须指定列结构")
 		}
-		if task.OutputPath == "" {
+		if task.OutputPath == "" && task.OutputType != models.OutputTypeMockServer {
 			return fmt.Errorf("CSV任务必须指定输出路径")
 		}
 	default:
@@ -425,11 +501,12 @@ func (s *TaskService) generateCSVPreview(task *models.Task, fieldRules map[strin
 	}
 
 	// 为预览创建独立的生成器实例
-	generatorService := NewGeneratorService()
+	generatorService := NewGeneratorService(s.dbService)
 
 	// 生成一条数据
 	context := map[string]interface{}{
-		"rowIndex": int64(0),
+		"rowIndex":   int64(0),
+		"dataSource": task.DataSource,
 	}
 	data, err := generatorService.GenerateRecord(tableInfo, fieldRules, []string{}, context)
 	if err != nil {
@@ -454,11 +531,12 @@ func (s *TaskService) generateDatabasePreview(task *models.Task, fieldRules map[
 	}
 
 	// 为预览创建独立的生成器实例
-	generatorService := NewGeneratorService()
+	generatorService := NewGeneratorService(s.dbService)
 
 	// 生成一条数据
 	context := map[string]interface{}{
-		"rowIndex": int64(0),
+		"rowIndex":   int64(0),
+		"dataSource": &dataSource,
 	}
 	data, err := generatorService.GenerateRecord(tableInfo, fieldRules, []string{}, context)
 	if err != nil {
@@ -477,11 +555,12 @@ func (s *TaskService) generateJSONPreview(task *models.Task, fieldRules map[stri
 	}
 
 	// 为预览创建独立的生成器实例
-	generatorService := NewGeneratorService()
+	generatorService := NewGeneratorService(s.dbService)
 
 	// 生成一条数据
 	context := map[string]interface{}{
-		"rowIndex": int64(0),
+		"rowIndex":   int64(0),
+		"dataSource": task.DataSource,
 	}
 	data, err := generatorService.GenerateJSON(schema, fieldRules, []string{}, context)
 	if err != nil {
@@ -519,7 +598,7 @@ func (s *TaskService) executeCSVTask(task *models.Task) error {
 	}
 
 	// 为每个任务创建独立的生成器实例
-	generatorService := NewGeneratorService()
+	generatorService := NewGeneratorService(s.dbService)
 
 	// 构造 TableInfo 供生成器使用
 	tableInfo := &models.TableInfo{
@@ -542,7 +621,8 @@ func (s *TaskService) executeCSVTask(task *models.Task) error {
 		for i := int64(0); i < currentBatch; i++ {
 			// 构造上下文
 			context := map[string]interface{}{
-				"rowIndex": generated + i,
+				"rowIndex":   generated + i,
+				"dataSource": task.DataSource,
 			}
 
 			record, err := generatorService.GenerateRecord(tableInfo, rules, uniqueFields, context)
@@ -552,10 +632,24 @@ func (s *TaskService) executeCSVTask(task *models.Task) error {
 			records[i] = record
 		}
 
-		// 导出到CSV文件
-		err = s.exportService.ExportToCSV(task.OutputPath, headers, records, generated == 0)
-		if err != nil {
-			return fmt.Errorf("导出CSV失败: %v", err)
+		// 导出数据
+		switch task.OutputType {
+		case models.OutputTypeCSV:
+			err = s.exportService.ExportToCSV(task.OutputPath, headers, records, generated == 0)
+			if err != nil {
+				return fmt.Errorf("导出CSV失败: %v", err)
+			}
+		case models.OutputTypeMockServer:
+			err = s.pushToMockServer(task, records)
+			if err != nil {
+				return fmt.Errorf("推送至Mock Server失败: %v", err)
+			}
+		default:
+			// 默认为CSV (兼容旧数据)
+			err = s.exportService.ExportToCSV(task.OutputPath, headers, records, generated == 0)
+			if err != nil {
+				return fmt.Errorf("导出CSV失败: %v", err)
+			}
 		}
 
 		generated += currentBatch
